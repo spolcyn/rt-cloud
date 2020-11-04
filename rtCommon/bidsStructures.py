@@ -138,7 +138,7 @@ class BidsIncremental:
 
         # ensure image file only has one image
         imgShape = niftiImg.get_fdata().shape
-        assert len(imgShape) == 3 or (len(imgShape) == 4 and imgShape[3] == 1)
+        assert len(imgShape) == 3 or (len(imgShape) == 4 and imgShape[0] == 1)
 
         self.niftiImg = niftiImg
 
