@@ -7,10 +7,14 @@ DICOM, BIDS-Incremental (BIDS-I), and BIDS formats.
 
 -----------------------------------------------------------------------------"""
 
+from bidsStructures import BidsArchive, BidsIncremental
+import logging
 import pydicom
 import re
 from rtCommon.errors import ValidationError
+from rtCommon.imageHandling import convertDicomImgToNifti
 
+logger = logging.getLogger(__name__)
 
 def getMetadata(dicomImg: pydicom.dataset.Dataset) -> (dict, dict):
     """
@@ -48,3 +52,14 @@ def getMetadata(dicomImg: pydicom.dataset.Dataset) -> (dict, dict):
             privateMeta[cleanedKey] = str(elem.value)
 
     return (publicMeta, privateMeta)
+
+
+def dicomToBidsinc(dicomImg: pydicom.dataset.Dataset) -> BidsIncremental:
+    # TODO(spolcyn): Do this all in memory -- dicom2nifti is promising
+    # Put extra metadata in sidecar JSON file
+    niftiImage = convertDicomImgToNifti(dicomImg)
+    publicMeta, privateMeta = getMetadata(dicomImg)
+
+    publicMeta.update(privateMeta)  # combine metadata dictionaries
+    return BidsIncremental(niftiImage, publicMeta)
+
