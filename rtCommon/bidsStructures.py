@@ -17,6 +17,7 @@ from typing import List
 
 from rtCommon.errors import ValidationError
 from rtCommon.imageHandling import readNifti
+import rtCommon.bidsUtils as bidsUtils
 
 logger = logging.getLogger(__name__)
 
@@ -63,9 +64,8 @@ class BidsDataset:
         Find an image within the dataset, if it exists.
         """
         # Validate extension and file existence
-        _, ext = os.path.splitext(path)
-        if ext == '.nii' and self.fileExists(path):
-            return readNifti(self.makeAbsolutePath(path))
+        if bidsUtils.isNiftiPath(path) and self.fileExists(path):
+            return readNifti(self.absPathFromRelPath(path))
 
         return None
 

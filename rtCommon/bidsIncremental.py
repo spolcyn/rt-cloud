@@ -7,7 +7,6 @@ DICOM, BIDS-Incremental (BIDS-I), and BIDS formats.
 
 -----------------------------------------------------------------------------"""
 
-from bidsStructures import BidsArchive, BidsIncremental
 import logging
 import nibabel as nib
 import numpy as np
@@ -16,6 +15,8 @@ import pydicom
 import random
 import re
 
+from rtCommon.bidsStructures import BidsArchive, BidsIncremental
+import rtCommon.bidsUtils as bidsUtils
 from rtCommon.errors import ValidationError
 from rtCommon.imageHandling import convertDicomImgToNifti
 
@@ -38,24 +39,19 @@ def getMetadata(dicomImg: pydicom.dataset.Dataset) -> (dict, dict):
     publicMeta = {}
     privateMeta = {}
 
-    # BIDS recommends CamelCase for the key names, which can be obtained from
-    # DICOM key names by removing non-alphanumeric characters
-    # NOTE: Keys like 'Frame of Reference UID' become 'FrameofReferenceUID',
-    # which might be different than the expected behavior
-    removalRegex = re.compile('[^a-zA-z]')
     ignoredTags = ['Pixel Data']
 
     for elem in dicomImg:
         if elem.name in ignoredTags:
             continue
 
-        cleanedKey = removalRegex.sub("", elem.name)
+        cleanedKey = bidsUtils.makeDicomFieldBidsCompatible(elem.name)
         # in DICOM, public tags have even group numbers and private tags are odd
         # http://dicom.nema.org/dicom/2013/output/chtml/part05/chapter_7.html
-        if elem.tag.group % 2 == 0:
-            publicMeta[cleanedKey] = str(elem.value)
-        else:
+        if elem.tag.is_private:
             privateMeta[cleanedKey] = str(elem.value)
+        else:
+            publicMeta[cleanedKey] = str(elem.value)
 
     return (publicMeta, privateMeta)
 
@@ -128,6 +124,7 @@ def appendBidsinc(incremental: BidsIncremental,
             newArchiveData = np.concatenate((archiveData, incrementalData), axis=3)
 
         newImg = nib.Nifti1Image(newArchiveData, archiveImg.affine)
+        print(newImg.header)
         archive.addImage(newImg, imgPath)
 
     elif archive.pathExists(imgDirPath):
