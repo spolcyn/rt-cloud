@@ -69,6 +69,31 @@ class BidsDataset:
 
         return None
 
+    def _ensurePathExists(self, absPath: str):
+        """
+        Checks if the provided path exists on disk, creating it if not. Only
+        creates directories along the path.
+
+        Returns:
+            True if a layout update is needed, false otherwise.
+        """
+        dirPath = os.path.split(absPath)[0]
+        if self.dirExists(dirPath):
+            return False
+
+        os.makedirs(dirPath)
+        return True
+
+    def _updateLayout(self):
+        """
+        Updates the layout of the dataset so that any new metadata or image
+        files are added to the index.
+        """
+        # TODO: Find if there's a more efficient way to update the index
+        # that doesn't rely on implementation details of the PyBids (ie, the
+        # SQLite DB it uses)
+        self.data = BIDSLayout(self.data.root)
+
     def addImage(self, img: nib.Nifti1Image, path: str) -> None:
         """
         Add an image to the dataset at the provided path, creating the path if
@@ -76,20 +101,12 @@ class BidsDataset:
         """
         logger.debug("Writing new image to %s", self.absPathFromRelPath(path))
         absPath = self.absPathFromRelPath(path)
-        layoutUpdateRequired = False
-
-        if not self.pathExists(path):
-            dirPath = os.path.split(absPath)[0]
-            os.makedirs(dirPath)
-            layoutUpdateRequired = True
+        layoutUpdateRequired = self._ensurePathExists(absPath)
 
         nib.save(img, absPath)
 
         if layoutUpdateRequired:
-            # TODO: Find if there's a more efficient way to update the index
-            # that doesn't rely on implementation details of the PyBids (ie, the
-            # SQLite DB it uses)
-            self.data = BIDSLayout(self.data.root)
+            self._updateLayout()
 
 
 class BidsArchive:
@@ -124,7 +141,7 @@ class BidsIncremental:
         Initializes a BIDS Incremental object with required data and metadata.
 
         Args:
-            niftiImg: Single nifti image for this BIDS-I as an NiBabel
+            niftiImg: Single Nifti image for this BIDS-I as an NiBabel
                 NiftiImage.
             imgMetadata: Required BIDS metadata for the NIfTI filename. Required
                 fields: 'sub', 'task', 'contrast_type'.

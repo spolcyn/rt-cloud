@@ -66,12 +66,45 @@ def dicomToBidsinc(dicomImg: pydicom.dataset.Dataset) -> BidsIncremental:
     # for BIDS in it by default. Thus, another component will handle the logic
     # and error handling surrounding this.
     niftiImage = convertDicomImgToNifti(dicomImg)
+    logger.debug("Nifti header after conversion is: %s", niftiImage.header)
     publicMeta, privateMeta = getMetadata(dicomImg)
 
     publicMeta.update(privateMeta)  # combine metadata dictionaries
     requiredMetadata = {'sub': '002', 'task': 'story', 'contrast_label': 'bold'}
     publicMeta.update(requiredMetadata)
     return BidsIncremental(niftiImage, publicMeta)
+
+def verifyNiftiHeadersMatch(img1: nib.Nifti1Image, img2: nib.Nifti1Image):
+    """
+    Verifies that two Nifti images' headers match in the following fields:
+    1) dim_info
+    2) intent_p1, intent_p2, intent_p3, intent_code
+    3) xyzt_units
+
+    Args:
+        img1: First Nifti image to compare
+        img2: Second Nifti image to compare
+
+    Returns:
+        True if the headers match along the required dimensions, false
+        otherwise.
+
+    Todo:
+        Implement checking more fields
+
+    """
+    # Nibabel doesn't provide documented access to the header dictionary, so use
+    # getter functions to extract values from the headers
+    functionsToVerify = ["get_dim_info", "get_intent", "get_xyzt_units"]
+
+    header1 = img1.header
+    header2 = img2.header
+
+    for f in functionsToVerify:
+        if not (getattr(header1, f)() == getattr(header2, f)()):
+            return False
+
+    return True
 
 
 def appendBidsinc(incremental: BidsIncremental,
@@ -112,36 +145,34 @@ def appendBidsinc(incremental: BidsIncremental,
     if archive.pathExists(imgPath):
         logger.debug("Image exists in archive, appending")
 
-        incrementalData = incremental.niftiImg.get_fdata()
+        # Validate header match
         archiveImg = archive.getImage(imgPath)
-        archiveData = archiveImg.get_fdata()
+        if not verifyNiftiHeadersMatch(incremental.niftiImg, archiveImg):
+            raise ValidationError("Nifti headers don't match!")
 
         # Build 4-D NIfTI if archive has 3-D, concat to 4-D otherwise
+        incrementalData = incremental.niftiImg.get_fdata()
+        archiveData = archiveImg.get_fdata()
+
         if len(archiveData.shape) == 3:
             newArchiveData = np.stack((archiveData, incrementalData), axis=3)
         else:
             incrementalData = np.expand_dims(incrementalData, 3)
             newArchiveData = np.concatenate((archiveData, incrementalData), axis=3)
 
-        newImg = nib.Nifti1Image(newArchiveData, archiveImg.affine)
-        print(newImg.header)
+        newImg = nib.Nifti1Image(newArchiveData,
+                                 archiveImg.affine,
+                                 header=archiveImg.header)
+        newImg.update_header()
         archive.addImage(newImg, imgPath)
 
-    elif archive.pathExists(imgDirPath):
+    elif archive.pathExists(imgDirPath) or makePath is True:
         logger.debug("Image doesn't exist in archive, creating")
-
-        incrementalData = incremental.niftiImg.get_fdata()
-        newImg = nib.Nifti1Image(incrementalData, None)
-        archive.addImage(newImg, imgPath)
+        archive.addImage(incremental.niftiImg, imgPath)
 
     else:
-        logger.debug("No valid archive path for image, can't append")
-        if makePath:
-            logger.debug("Overriding no valid archive path, creating dir path")
-            incrementalData = incremental.niftiImg.get_fdata()
-            newImg = nib.Nifti1Image(incrementalData, None)
-            archive.addImage(newImg, imgPath)
-
+        logger.debug("No valid archive path for image and no override \
+                      specified, can't append")
 
 def bidsToBidsinc(bidsArchive: BidsArchive,
                   subjectID: str,
