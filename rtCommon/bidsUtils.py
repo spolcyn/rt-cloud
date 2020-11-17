@@ -22,6 +22,14 @@ def isNiftiPath(path: str) -> bool:
     _, ext = os.path.splitext(path)
     return ext == '.nii'
 
+def isJsonPath(path: str) -> bool:
+    """
+    Returns true if the provided path points to an uncompressed NIfTI file,
+    false otherwise.
+    """
+    _, ext = os.path.splitext(path)
+    return ext == '.json'
+
 
 @lru_cache(maxsize=128)
 def makeDicomFieldBidsCompatible(field: str) -> str:

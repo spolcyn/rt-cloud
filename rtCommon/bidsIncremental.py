@@ -7,18 +7,19 @@ DICOM, BIDS-Incremental (BIDS-I), and BIDS formats.
 
 -----------------------------------------------------------------------------"""
 
+from bids.layout import parse_file_entities
+
+import json
 import logging
 import nibabel as nib
 import numpy as np
 import os
 import pydicom
-import random
-import re
 
 from rtCommon.bidsStructures import BidsArchive, BidsIncremental
 import rtCommon.bidsUtils as bidsUtils
 from rtCommon.errors import ValidationError
-from rtCommon.imageHandling import convertDicomImgToNifti
+from rtCommon.imageHandling import convertDicomImgToNifti, readNifti
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +80,7 @@ def dicomToBidsinc(dicomImg: pydicom.dataset.Dataset) -> BidsIncremental:
     requiredMetadata = {'sub': '002', 'task': 'story', 'contrast_label': 'bold'}
     publicMeta.update(requiredMetadata)
     return BidsIncremental(niftiImage, publicMeta)
+
 
 def verifyNiftiHeadersMatch(img1: nib.Nifti1Image, img2: nib.Nifti1Image):
     """
@@ -141,6 +143,7 @@ def verifyNiftiHeadersMatch(img1: nib.Nifti1Image, img2: nib.Nifti1Image):
 
     return True
 
+
 def verifyMetadataMatch(meta1: dict, meta2: dict):
     """
     Verifies two metadata dictionaries match in a set of required fields. If a
@@ -164,24 +167,25 @@ def verifyMetadataMatch(meta1: dict, meta2: dict):
         return True
 
     matchFields = ["Modality", "MagneticFieldStrength", "ImagingFrequency",
-            "Manufacturer", "ManufacturersModelName", "InstitutionName",
-            "InstitutionAddress", "DeviceSerialNumber", "StationName",
-            "BodyPartExamined", "PatientPosition", "ProcedureStepDescription",
-            "SoftwareVersions", "MRAcquisitionType", "SeriesDescription",
-            "ProtocolName", "ScanningSequence", "SequenceVariant",
-            "ScanOptions", "SequenceName", "ImageType", "SliceThickness",
-            "SpacingBetweenSlices", "EchoTime", "RepetitionTime", "FlipAngle",
-            "PartialFourier", "ImageOrientationPatientDICOM",
-            "InPlanePhaseEncodingDirectionDICOM", "PhaseEncodingDirection"]
+                   "Manufacturer", "ManufacturersModelName", "InstitutionName",
+                   "InstitutionAddress", "DeviceSerialNumber", "StationName",
+                   "BodyPartExamined", "PatientPosition", "EchoTime",
+                   "ProcedureStepDescription", "SoftwareVersions",
+                   "MRAcquisitionType", "SeriesDescription", "ProtocolName",
+                   "ScanningSequence", "SequenceVariant", "ScanOptions",
+                   "SequenceName", "SpacingBetweenSlices", "SliceThickness",
+                   "ImageType", "RepetitionTime", "PhaseEncodingDirection",
+                   "FlipAngle", "InPlanePhaseEncodingDirectionDICOM",
+                   "ImageOrientationPatientDICOM", "PartialFourier"]
 
     # If either field is None, short-circuit and continue checking other fields
     for field in matchFields:
         field1 = meta1.get(field)
-        if field1 == None:
+        if field1 is None:
             continue
 
         field2 = meta2.get(field)
-        if field2 == None:
+        if field2 is None:
             continue
 
         if field1 != field2:
@@ -195,11 +199,11 @@ def verifyMetadataMatch(meta1: dict, meta2: dict):
     for field in differentFields:
         logger.debug("Verifying: %s", field)
         field1 = meta1.get(field)
-        if field1 == None:
+        if field1 is None:
             continue
 
         field2 = meta2.get(field)
-        if field2 == None:
+        if field2 is None:
             continue
 
         if field1 == field2:
@@ -208,6 +212,7 @@ def verifyMetadataMatch(meta1: dict, meta2: dict):
             return False
 
     return True
+
 
 def appendBidsinc(incremental: BidsIncremental,
                   archive: BidsArchive,
@@ -248,10 +253,10 @@ def appendBidsinc(incremental: BidsIncremental,
 
         # Validate header match
         if not verifyNiftiHeadersMatch(incremental.image,
-                archiveImg):
+                                       archiveImg):
             raise ValidationError("Nifti headers failed validation!")
         if not verifyMetadataMatch(incremental.imgMetadata,
-                archive.getMetadata(metadataPath)):
+                                   archive.getMetadata(metadataPath)):
             raise ValidationError("Image metadata failed validation!")
 
         # Build 4-D NIfTI if archive has 3-D, concat to 4-D otherwise
@@ -262,7 +267,8 @@ def appendBidsinc(incremental: BidsIncremental,
             newArchiveData = np.stack((archiveData, incrementalData), axis=3)
         else:
             incrementalData = np.expand_dims(incrementalData, 3)
-            newArchiveData = np.concatenate((archiveData, incrementalData), axis=3)
+            newArchiveData = np.concatenate((archiveData, incrementalData),
+                                            axis=3)
 
         newImg = nib.Nifti1Image(newArchiveData,
                                  archiveImg.affine,
@@ -279,28 +285,100 @@ def appendBidsinc(incremental: BidsIncremental,
         raise ValidationError("No valid archive path for image and no override \
                                specified, can't append")
 
-def bidsToBidsinc(bidsArchive: BidsArchive,
+
+def bidsToBidsinc(archive: BidsArchive,
                   subjectID: str,
                   sessionID: str,
                   dataType: str,
-                  otherLabels: str,
-                  imageIndex: int):
+                  imageIndex: int = 0,
+                  taskName: str = "",
+                  contrastLabel: str = "",
+                  otherLabels: dict = {}):
     """
-    Returns a Bids-Incremental file with the specified image of the bidsarchive
+    Creates a BIDS-Incremental file from the specified part of the BIDS Archive.
+
     Args:
-        bidsArchive: The archive to pull data from
+        archive: The archive to pull data from
         subjectID: Subject ID to pull data for (for "sub-control01", ID is
             "control01")
         sessionID: Session ID to pull data for (for "ses-2020", ID is "2020")
+        taskName: Task to pull data for (for "task-nback", name is "nback")
+        contrastLabel: Image contrast to pull images for (bold, cbv, or phase)
         dataType: Type of data to pull (common types: anat, func, dwi, fmap).
             This string must be the same as the name of the directory containing
             the image data.
         otherLabels: Other labels specifying appropriate file to pull data for
             (for "sub-control01_task-nback_bold", label is "task-nback_bold").
         imageIndex: Index of image to pull if specifying a 4-D sequence.
+
+    Returns:
+        BIDS-Incremental file with the specified image of the archive and its
+            associated metadata
+
     Examples:
         bidsToBidsInc(archive, "01", "2020", "func", "task-nback_bold", 0) will
         extract the first image of the volume at:
         "sub-01/ses-2020/func/sub-01_task-nback_bold.nii"
+
     """
-    pass
+    archivePath = "sub-{}".format(subjectID)
+    if sessionID is not None:
+        archivePath = os.path.join(archivePath, "ses-{}".format(sessionID))
+    archivePath = os.path.join(archivePath, dataType)
+
+    matchingFilePaths = archive.getFilesForPath(archivePath)
+    niftiPaths = [path for path in matchingFilePaths
+                  if bidsUtils.isNiftiPath(path)]
+    metaPaths = [path for path in matchingFilePaths
+                 if bidsUtils.isJsonPath(path)]
+
+    # Fail if no images
+    if not niftiPaths:
+        logger.debug("Failed to find any matching images in the archive to \
+                      make a BIDS-I from!")
+        return None
+
+    # Warn if no metadata
+    if not metaPaths:
+        logger.debug("Failed to find any matching metadata in the archive to \
+                      include in a BIDS-I!")
+
+    metadata = {'sub': subjectID, 'ses': sessionID, 'task': taskName,
+                'contrast_label': contrastLabel}
+    image = None
+
+    def pathEntitiesMatch(path) -> bool:
+        """
+        Return true if the BIDS entities contained in the file at the given path
+        match the entities provided to the BIDS -> BIDS-I conversion method.
+        """
+        entities = parse_file_entities(path)
+
+        if otherLabels:
+            for label, value in otherLabels.items():
+                if entities.get(label) != value:
+                    return False
+
+        return (entities.get("task") == taskName and
+                entities.get("suffix") == contrastLabel)
+
+    for path in niftiPaths:
+        if pathEntitiesMatch(path):
+            image = readNifti(path)
+            break
+
+    for path in metaPaths:
+        if pathEntitiesMatch(path):
+            with open(path, 'r', encoding='utf-8') as metadataFile:
+                metadata.update(json.load(metadataFile))
+            break
+
+    if image is not None:
+        # https://nipy.org/nibabel/images_and_memory.html
+        targetSlice = image.dataobj[..., imageIndex]
+        newImage = nib.Nifti1Image(targetSlice, image.affine, image.header)
+        newImage.update_header()  # reset header to reflect new dimensions
+        return BidsIncremental(newImage, metadata)
+    else:
+        logger.debug("Failed to find image for BIDS-I in the BIDS archive!")
+        return None

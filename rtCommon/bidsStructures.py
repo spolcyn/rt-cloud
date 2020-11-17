@@ -139,25 +139,26 @@ class BidsDataset:
         self._updateLayout()
 
     def findFiles(self, path: str) -> List:
+        """
+        Finds all files within the dataset at the provided path. Path should be
+        relative to dataset root.
+
+        Args:
+            path: Path relative to dataset root to search for files in.
+
+        Returns:
+            List of absoulte paths on disk to the files found at the target.
+
+        """
         # Get all files
         # TODO: Make more efficient using pybids internal query?
         files = self.data.get_files()
-        # logger.debug("Files: %s", files)
         matchingFiles = []
         absPath = self.absPathFromRelPath(path)
-        logger.debug("Abs Path: %s\n", absPath)
 
-        for _, v in files.items():
-            """
-            logger.debug("File: %s\n", v.filename)
-            logger.debug("Dir: %s\n", v.dirname)
-            logger.debug("Path: %s\n", v.path)
-            """
-            if v.path.startswith(absPath):
-                matchingFiles.append(v.path)
-
-        for f in matchingFiles:
-            logger.debug("Match: %s\n", f)
+        for _, bidsFile in files.items():
+            if bidsFile.path.startswith(absPath):
+                matchingFiles.append(bidsFile.path)
 
         return matchingFiles
 
@@ -177,6 +178,9 @@ class BidsArchive:
         Check whether the provided path is valid within the archive.
         """
         return self.dataset.pathExists(path)
+
+    def getFilesForPath(self, path: str) -> List:
+        return self.dataset.findFiles(path)
 
     def getImage(self, path: str) -> nib.Nifti1Image:
         return self.dataset.findImage(path)
@@ -220,11 +224,6 @@ class BidsIncremental:
             ValidationError: If any required metadata field is not provided.
 
         """
-
-        # ensure image file only has one image
-        imgShape = niftiImg.get_fdata().shape
-        assert len(imgShape) == 3 or (len(imgShape) == 4 and imgShape[0] == 1)
-
         self.image = niftiImg
         self.header = niftiImg.header
 
@@ -238,6 +237,12 @@ class BidsIncremental:
         self.datasetMetadata = datasetMetadata
 
         self.version = 1
+
+    def __str__(self):
+        return "Image shape: {}; # Metadata Keys: {}; Version: {}".format(
+                self.image.get_fdata().shape,
+                len(self.imgMetadata.keys()),
+                self.version)
 
     @staticmethod
     def findMissingMetadata(metadata: dict) -> List[str]:
