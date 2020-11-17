@@ -22,6 +22,12 @@ from rtCommon.imageHandling import convertDicomImgToNifti
 
 logger = logging.getLogger(__name__)
 
+# Set to True to skip validating Nifti header when appending
+DISABLE_NIFTI_HEADER_CHECK = False
+
+# Set to True to skip validating metadata when appending
+DISABLE_METADATA_CHECK = True
+
 
 def getMetadata(dicomImg: pydicom.dataset.Dataset) -> (dict, dict):
     """
@@ -60,7 +66,7 @@ def dicomToBidsinc(dicomImg: pydicom.dataset.Dataset) -> BidsIncremental:
     # TODO(spolcyn): Do this all in memory -- dicom2nifti is promising
     # Put extra metadata in sidecar JSON file
     #
-    # NOTE: This is currently a method stub pending further dev.
+    # NOTE: This is not the final version of this method.
     # The conversion from DICOM to BIDS-I and gathering all required metadata
     # can be complex, as DICOM doesn't necessarily have the metadata required
     # for BIDS in it by default. Thus, another component will handle the logic
@@ -76,36 +82,132 @@ def dicomToBidsinc(dicomImg: pydicom.dataset.Dataset) -> BidsIncremental:
 
 def verifyNiftiHeadersMatch(img1: nib.Nifti1Image, img2: nib.Nifti1Image):
     """
-    Verifies that two Nifti images' headers match in the following fields:
-    1) dim_info
-    2) intent_p1, intent_p2, intent_p3, intent_code
-    3) xyzt_units
+    Verifies that two Nifti image headers match in along a defined set of
+    NIfTI header fields which should not change during a continuous fMRI
+    scanning session.
+
+    This is primarily intended as a safety check, and does not conclusively
+    determine that two images are valid to append to together or are part of the
+    same scanning session.
 
     Args:
-        img1: First Nifti image to compare
-        img2: Second Nifti image to compare
+        header1: First Nifti header to compare (dict of numpy arrays)
+        header2: Second Nifti header to compare (dict of numpy arrays)
 
     Returns:
         True if the headers match along the required dimensions, false
         otherwise.
 
-    Todo:
-        Implement checking more fields
-
     """
-    # Nibabel doesn't provide documented access to the header dictionary, so use
-    # getter functions to extract values from the headers
-    functionsToVerify = ["get_dim_info", "get_intent", "get_xyzt_units"]
+    fieldsToMatch = ["intent_p1", "intent_p2", "intent_p3", "intent_code",
+                     "dim_info", "datatype", "bitpix", "xyzt_units",
+                     "slice_duration", "toffset", "scl_slope", "scl_inter",
+                     "qform_code", "quatern_b", "quatern_c", "quatern_d",
+                     "qoffset_x", "qoffset_y", "qoffset_z",
+                     "sform_code", "srow_x", "srow_y", "srow_z"]
 
     header1 = img1.header
     header2 = img2.header
 
-    for f in functionsToVerify:
-        if not (getattr(header1, f)() == getattr(header2, f)()):
+    for field in fieldsToMatch:
+        v1 = header1.get(field)
+        v2 = header2.get(field)
+
+        # Use slightly more complicated check to properly match nan values
+        if not (np.allclose(v1, v2, atol=0.0, equal_nan=True)):
+            logger.debug("Nifti headers don't match on field: %s \
+                         (v1: %s, v2: %s)\n", field, v1, v2)
+            if DISABLE_NIFTI_HEADER_CHECK:
+                continue
+            else:
+                return False
+
+    # For pixel dimensions, 0 and 1 are equivalent -- any value in a higher
+    # index than the number of dimensions specified in the 'dim' field will be
+    # ignored, and a 0 in a non-ignored index makes no sense
+    field = "pixdim"
+    v1 = header1.get(field)
+    v2 = header2.get(field)
+    v1 = np.where(v1 == 0, 1, v1)
+    v2 = np.where(v2 == 0, 1, v2)
+
+    if not (np.allclose(v1, v2, atol=0.0, equal_nan=True)):
+        logger.debug("Nifti headers don't match on field: %s \
+                     (v1: %s, v2: %s)\n", field, v1, v2)
+        if DISABLE_NIFTI_HEADER_CHECK:
+            pass
+        else:
             return False
 
     return True
 
+def verifyMetadataMatch(meta1: dict, meta2: dict):
+    """
+    Verifies two metadata dictionaries match in a set of required fields. If a
+    field is present in only one or neither of the two dictionaries, this is
+    considered a match.
+
+    This is primarily intended as a safety check, and does not conclusively
+    determine that two images are valid to append to together or are part of the
+    same series.
+
+    Args:
+        meta1: First metadata dictionary
+        meta2: Second metadata dictionary
+
+    Returns:
+        True if all keys that are present in both dictionaries have equivalent
+        values, False otherwise.
+
+    """
+    if DISABLE_METADATA_CHECK:
+        return True
+
+    matchFields = ["Modality", "MagneticFieldStrength", "ImagingFrequency",
+            "Manufacturer", "ManufacturersModelName", "InstitutionName",
+            "InstitutionAddress", "DeviceSerialNumber", "StationName",
+            "BodyPartExamined", "PatientPosition", "ProcedureStepDescription",
+            "SoftwareVersions", "MRAcquisitionType", "SeriesDescription",
+            "ProtocolName", "ScanningSequence", "SequenceVariant",
+            "ScanOptions", "SequenceName", "ImageType", "SliceThickness",
+            "SpacingBetweenSlices", "EchoTime", "RepetitionTime", "FlipAngle",
+            "PartialFourier", "ImageOrientationPatientDICOM",
+            "InPlanePhaseEncodingDirectionDICOM", "PhaseEncodingDirection"]
+
+    # If either field is None, short-circuit and continue checking other fields
+    for field in matchFields:
+        field1 = meta1.get(field)
+        if field1 == None:
+            continue
+
+        field2 = meta2.get(field)
+        if field2 == None:
+            continue
+
+        if field1 != field2:
+            logger.debug("Metadata doen't match on field: %s \
+                         (v1: %s, v2: %s)\n", field, field1, field2)
+            return False
+
+    # These fields should not match between two images for a valid append
+    differentFields = ["AcquisitionTime", "Acquisition Number"]
+
+    for field in differentFields:
+        logger.debug("Verifying: %s", field)
+        field1 = meta1.get(field)
+        if field1 == None:
+            continue
+
+        field2 = meta2.get(field)
+        if field2 == None:
+            continue
+
+        if field1 == field2:
+            logger.debug("Metadata matches (shouldn't) on field: %s \
+                         (v1: %s, v2: %s)\n", field, field1, field2)
+            return False
+
+    return True
 
 def appendBidsinc(incremental: BidsIncremental,
                   archive: BidsArchive,
@@ -133,9 +235,7 @@ def appendBidsinc(incremental: BidsIncremental,
     # 1) Create target path for image in archive
     imgDirPath = incremental.makeDataDirPath()
     imgPath = os.path.join(imgDirPath, incremental.getImageFileName())
-    imgDirPath = os.path.join(imgDirPath, "")
-    logger.debug("Image dir path: %s", imgDirPath)
-    logger.debug("Image file path: %s", imgPath)
+    metadataPath = os.path.join(imgDirPath, incremental.getMetadataFileName())
 
     # 2) Verify we have a valid way to append the image to the archive. 3 cases:
     # 2.1) Image already exists within archive, append this Nifti to that Nifti
@@ -144,14 +244,18 @@ def appendBidsinc(incremental: BidsIncremental,
     # 2.3) Neither image nor path is valid for provided archive; fail append
     if archive.pathExists(imgPath):
         logger.debug("Image exists in archive, appending")
+        archiveImg = archive.getImage(imgPath)
 
         # Validate header match
-        archiveImg = archive.getImage(imgPath)
-        if not verifyNiftiHeadersMatch(incremental.niftiImg, archiveImg):
-            raise ValidationError("Nifti headers don't match!")
+        if not verifyNiftiHeadersMatch(incremental.image,
+                archiveImg):
+            raise ValidationError("Nifti headers failed validation!")
+        if not verifyMetadataMatch(incremental.imgMetadata,
+                archive.getMetadata(metadataPath)):
+            raise ValidationError("Image metadata failed validation!")
 
         # Build 4-D NIfTI if archive has 3-D, concat to 4-D otherwise
-        incrementalData = incremental.niftiImg.get_fdata()
+        incrementalData = incremental.image.get_fdata()
         archiveData = archiveImg.get_fdata()
 
         if len(archiveData.shape) == 3:
@@ -168,11 +272,12 @@ def appendBidsinc(incremental: BidsIncremental,
 
     elif archive.pathExists(imgDirPath) or makePath is True:
         logger.debug("Image doesn't exist in archive, creating")
-        archive.addImage(incremental.niftiImg, imgPath)
+        archive.addImage(incremental.image, imgPath)
+        archive.addMetadata(incremental.imgMetadata, metadataPath)
 
     else:
-        logger.debug("No valid archive path for image and no override \
-                      specified, can't append")
+        raise ValidationError("No valid archive path for image and no override \
+                               specified, can't append")
 
 def bidsToBidsinc(bidsArchive: BidsArchive,
                   subjectID: str,

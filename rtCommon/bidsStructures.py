@@ -9,6 +9,8 @@ datasets.
 
 from bids import BIDSLayout
 import bids.config as bc
+from enum import Enum
+import json
 import logging
 import nibabel as nib
 import os
@@ -31,6 +33,9 @@ class BidsDataset:
         logger.debug("Loading dataset \"%s\" from: %s", self.name, path)
         self.data = BIDSLayout(path)
         logger.debug("Dataset info: %s", self.data)
+
+    def __str__(self):
+        return str(self.data)
 
     def insert(self) -> None:
         # Insert some type of data to the dataset
@@ -108,6 +113,54 @@ class BidsDataset:
         if layoutUpdateRequired:
             self._updateLayout()
 
+    def findMetadata(self, path: str) -> dict:
+        """
+        Finds metadata for the file at path in the dataset.
+
+        Args:
+            path: Relative path to an image file.
+
+        Returns:
+            Dictionary with sidecar metadata for the file and any metadata that
+                can be extracted from the filename (e.g., subject, session)
+
+        """
+        return self.data.get_metadata(self.absPathFromRelPath(path),
+                                      include_entities=True)
+
+    def addMetadata(self, metadata: dict, path: str) -> None:
+        absPath = self.absPathFromRelPath(path)
+
+        with open(absPath, 'w', encoding='utf-8') as metadataFile:
+            json.dump(metadata, metadataFile, ensure_ascii=False, indent=4)
+
+        logger.debug("Wrote new metadata to %s", absPath)
+
+        self._updateLayout()
+
+    def findFiles(self, path: str) -> List:
+        # Get all files
+        # TODO: Make more efficient using pybids internal query?
+        files = self.data.get_files()
+        # logger.debug("Files: %s", files)
+        matchingFiles = []
+        absPath = self.absPathFromRelPath(path)
+        logger.debug("Abs Path: %s\n", absPath)
+
+        for _, v in files.items():
+            """
+            logger.debug("File: %s\n", v.filename)
+            logger.debug("Dir: %s\n", v.dirname)
+            logger.debug("Path: %s\n", v.path)
+            """
+            if v.path.startswith(absPath):
+                matchingFiles.append(v.path)
+
+        for f in matchingFiles:
+            logger.debug("Match: %s\n", f)
+
+        return matchingFiles
+
 
 class BidsArchive:
     """
@@ -115,6 +168,9 @@ class BidsArchive:
     """
     def __init__(self, rootPath: str, datasetName: str = None):
         self.dataset = BidsDataset(rootPath)
+
+    def __str__(self):
+        return str(self.dataset)
 
     def pathExists(self, path: str) -> bool:
         """
@@ -127,6 +183,18 @@ class BidsArchive:
 
     def addImage(self, img: nib.Nifti1Image, path: str) -> None:
         self.dataset.addImage(img, path)
+
+    def getMetadata(self, path: str) -> dict:
+        return self.dataset.findMetadata(path)
+
+    def addMetadata(self, metadata: dict, path: str) -> None:
+        self.dataset.addMetadata(metadata, path)
+
+
+class BidsFileExtension(Enum):
+    IMAGE = '.nii'
+    IMAGE_COMPRESSED = '.nii.gz'
+    METADATA = '.json'
 
 
 class BidsIncremental:
@@ -157,7 +225,8 @@ class BidsIncremental:
         imgShape = niftiImg.get_fdata().shape
         assert len(imgShape) == 3 or (len(imgShape) == 4 and imgShape[0] == 1)
 
-        self.niftiImg = niftiImg
+        self.image = niftiImg
+        self.header = niftiImg.header
 
         missingMetadata = self.findMissingMetadata(imgMetadata)
         if missingMetadata != []:
@@ -229,15 +298,19 @@ class BidsIncremental:
     def getContrastLabel(self):
         return self.getFieldLabelString('contrast_label')
 
-    def getImageFileName(self) -> str:
+    def makeBidsFileName(self, extension: BidsFileExtension) -> str:
         """
-        Create the expected image file name based on the metadata. General
-        format of filename, per BIDS standard 1.4.1, is as follows (items in
+        Create the a BIDS-compatible file name based on the metadata. General
+        format of the filename, per BIDS standard 1.4.1, is as follows (items in
         square brackets [] are considered optional):
 
         sub-<label>[_ses-<label>]_task-<label>[_acq-<label>]\
         [_ce-<label>] [_dir-<label>][_rec-<label>][_run-<index>]\
-        [_echo-<index>]_<contrast_label >.nii[.gz]
+        [_echo-<index>]_<contrast_label >.ext
+
+        Args:
+            extension: The extension for the file, e.g., 'nii' for images or
+                'json' for metadata
 
         Return:
             Filename from metadata according to BIDS standard 1.4.1.
@@ -273,7 +346,13 @@ class BidsIncremental:
         echoLabel = getEchoLabel()
         """
 
-        return '_'.join(labelPairs) + '.nii'
+        return '_'.join(labelPairs) + extension.value
+
+    def getImageFileName(self) -> str:
+        return self.makeBidsFileName(BidsFileExtension.IMAGE)
+
+    def getMetadataFileName(self) -> str:
+        return self.makeBidsFileName(BidsFileExtension.METADATA)
 
     def getDatasetName(self) -> str:
         return 'dataset'
@@ -292,7 +371,8 @@ class BidsIncremental:
         return os.path.join("",
                             'sub-' + self.getSubjectID(),
                             'ses-' + self.getSessionName(),
-                            self.getDataTypeName())
+                            self.getDataTypeName(),
+                            "")
 
     def makeImageFilePath(self) -> str:
         dataDir = self.makeDataDirPath()
@@ -343,7 +423,7 @@ class BidsIncremental:
             niftiFilename += '_' + task
         print(niftiFilename)
 
-        nib.save(self.niftiImg, os.path.join(funcDir, niftiFilename))
+        nib.save(self.image, os.path.join(funcDir, niftiFilename))
 
         # Write out metadata
 
