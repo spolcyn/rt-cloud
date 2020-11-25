@@ -26,6 +26,10 @@ logger = logging.getLogger(__name__)
 # Silence future warning
 bc.set_option('extension_initial_dot', True)
 
+# Version of the standard that these structures should be compatible with
+BIDS_VERSION = "1.4.1"
+DATASET_DESCRIPTION_REQUIRED_FIELDS = ["Name", "BIDSVersion"]
+
 
 class BidsDataset:
     def __init__(self, path: str):
@@ -234,7 +238,19 @@ class BidsIncremental:
             raise ValidationError(errorMsg)
 
         self.imgMetadata = imgMetadata
-        self.datasetMetadata = datasetMetadata
+
+        if datasetMetadata is None:
+            datasetMetadata["Name"] = "BIDS-Incremental Dataset"
+            datasetMetadata["BIDSVersion"] = str(BIDS_VERSION)
+        else:
+            missingFields = [field for field in
+                    DATASET_DESCRIPTION_REQUIRED_FIELDS if
+                    datasetMetadata.get(field) is None]
+
+            if missingFields != []:
+                errorMsg = "Dataset description provided, but missing these \
+                            required fields: " + missingFields
+               raise ValidationError(missingFields)
 
         self.version = 1
 
