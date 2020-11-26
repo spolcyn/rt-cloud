@@ -217,8 +217,7 @@ class BidsIncremental:
         Initializes a BIDS Incremental object with required data and metadata.
 
         Args:
-            niftiImg: Single Nifti image for this BIDS-I as an NiBabel
-                NiftiImage.
+            niftiImg: Nifti image for this BIDS-I as an NiBabel NiftiImage.
             imgMetadata: Required BIDS metadata for the NIfTI filename. Required
                 fields: 'sub', 'task', 'contrast_type'.
             datasetMetadata: Top-level dataset metadata for the BIDS dataset
@@ -228,42 +227,53 @@ class BidsIncremental:
             ValidationError: If any required metadata field is not provided.
 
         """
-        self.image = niftiImg
-        self.header = niftiImg.header
+        if niftiImg is None:
+            raise ValidationError("Image cannot be None!")
+        elif not (isinstance(niftiImg, nib.Nifti1Image) or
+                  isinstance(niftiImg, nib.Nifti2Image)):
+            raise ValidationError("Image must be NIBabel Nifti 1 or 2 image!")
+        else:
+            self.image = niftiImg
+            self.header = niftiImg.header
 
         missingMetadata = self.findMissingMetadata(imgMetadata)
         if missingMetadata != []:
             errorMsg = "Image metadata missing these required fields: {}" \
-                       .format(missingMetadata)
+                .format(missingMetadata)
             raise ValidationError(errorMsg)
 
         self.imgMetadata = imgMetadata
 
         if datasetMetadata is None:
+            datasetMetadata = {}
             datasetMetadata["Name"] = "BIDS-Incremental Dataset"
             datasetMetadata["BIDSVersion"] = str(BIDS_VERSION)
         else:
-            missingFields = [field for field in
-                    DATASET_DESCRIPTION_REQUIRED_FIELDS if
-                    datasetMetadata.get(field) is None]
+            missingFields = [field for
+                             field in DATASET_DESCRIPTION_REQUIRED_FIELDS
+                             if datasetMetadata.get(field) is None]
 
             if missingFields != []:
                 errorMsg = "Dataset description provided, but missing these \
-                            required fields: " + missingFields
-               raise ValidationError(missingFields)
+                        required fields: " + missingFields
+                raise ValidationError(missingFields)
 
         self.version = 1
 
     def __str__(self):
         return "Image shape: {}; # Metadata Keys: {}; Version: {}".format(
-                self.image.get_fdata().shape,
-                len(self.imgMetadata.keys()),
-                self.version)
+            self.image.get_fdata().shape,
+            len(self.imgMetadata.keys()),
+            self.version)
 
     @staticmethod
     def findMissingMetadata(metadata: dict) -> List[str]:
         requiredMetadata = ['sub', 'task', 'contrast_label']
-        return [key for key in requiredMetadata if key not in metadata]
+        if metadata is None:
+            return requiredMetadata
+        else:
+            return [key for key in requiredMetadata
+                    if metadata.get(key) is None]
 
     def getFieldLabelString(self, bidsField: str) -> str:
         """
@@ -297,7 +307,7 @@ class BidsIncremental:
             return result.group(1)
         else:
             logger.debug("Failed to find exactly one match in protocol name \
-                          \'%s\' for field %s", protocolName, bidsField)
+                    \'%s\' for field %s", protocolName, bidsField)
             return None
 
     def getSubjectID(self):
@@ -325,8 +335,8 @@ class BidsIncremental:
         format of the filename, per BIDS standard 1.4.1, is as follows (items in
         square brackets [] are considered optional):
 
-        sub-<label>[_ses-<label>]_task-<label>[_acq-<label>]\
-        [_ce-<label>] [_dir-<label>][_rec-<label>][_run-<index>]\
+        sub-<label>[_ses-<label>]_task-<label>[_acq-<label>] [_ce-<label>]
+        [_dir-<label>][_rec-<label>][_run-<index>]
         [_echo-<index>]_<contrast_label >.ext
 
         Args:
