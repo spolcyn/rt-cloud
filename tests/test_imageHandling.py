@@ -6,10 +6,8 @@ import rtCommon.imageHandling as imgHandler
 from nibabel.nicom import dicomreaders
 from rtCommon.dataInterface import DataInterface
 from rtCommon.errors import ValidationError
-
-test_dicomFile = '001_000013_000005.dcm'
-test_dicomTruncFile = 'trunc_001_000013_000005.dcm'
-dicomDir = os.path.join(os.path.dirname(__file__), 'test_input')
+from tests.common import test_dicomFile, test_dicomTruncFile, test_inputDir
+dicomDir = test_inputDir
 dicomFile = os.path.join(dicomDir, test_dicomFile)
 
 
