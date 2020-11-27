@@ -1,17 +1,31 @@
 """-----------------------------------------------------------------------------
 
-bidsUtils.py
+bidsCommon.py
 
-Utilitiy functions for working with BIDS archives.
+Shared constants and functions used by modules working with BIDS data.
 
 -----------------------------------------------------------------------------"""
-
+from enum import Enum
 from functools import lru_cache
 import os
-import pydicom
 import re
 
+import pydicom
+
 from rtCommon.errors import ValidationError
+
+# Version of the standard to be compatible with
+BIDS_VERSION = "1.4.1"
+
+# Required fields in the dataset_description.json file
+DATASET_DESC_REQ_FIELDS = ["Name", "BIDSVersion"]
+
+
+# Valid extensions for various file types in the BIDS format
+class BidsFileExtension(Enum):
+    IMAGE = '.nii'
+    IMAGE_COMPRESSED = '.nii.gz'
+    METADATA = '.json'
 
 
 def isNiftiPath(path: str) -> bool:
@@ -21,6 +35,7 @@ def isNiftiPath(path: str) -> bool:
     """
     _, ext = os.path.splitext(path)
     return ext == '.nii'
+
 
 def isJsonPath(path: str) -> bool:
     """
