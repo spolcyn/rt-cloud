@@ -6,13 +6,16 @@ Implements the BIDS Incremental data type used for streaming BIDS data between
 different applications.
 
 -----------------------------------------------------------------------------"""
-import logging
+from functools import lru_cache
 import os
 import re
 from typing import List
 
+import logging
 import nibabel as nib
 
+from bids.layout.writing import build_path as bidsBuildPath
+from bids.layout import parse_file_entities as bidsParseFileEntities
 from rtCommon.errors import ValidationError
 from rtCommon.bidsCommon import (
     BidsFileExtension,
@@ -28,37 +31,45 @@ class BidsIncremental:
     BIDS Incremental data format suitable for streaming BIDS Archives
     """
     def __init__(self,
-                 niftiImg: nib.Nifti1Image,
-                 imgMetadata: dict,
+                 image: nib.Nifti1Image,
+                 subject: str,
+                 task: str,
+                 suffix: str,
+                 imgMetadata: dict = None,
                  datasetMetadata: dict = None):
         """
         Initializes a BIDS Incremental object with required data and metadata.
 
         Args:
-            niftiImg: Nifti image for this BIDS-I as an NiBabel NiftiImage.
-            imgMetadata: Required BIDS metadata for the NIfTI filename. Required
-                fields: 'sub', 'task', 'contrast_type'.
+            image: Nifti image for this BIDS-I as an NiBabel NiftiImage.
+                NIfTI 2 is not officially tested, but should work without issue.
+            subject: Subject ID corresponding to this image
+            task: Task name corresponding to this image
+            suffix: Image contrast type for this image ('bold' or 'cbv')
+            imgMetadata: Additional metadata about the image
             datasetMetadata: Top-level dataset metadata for the BIDS dataset
-                this represents.
+                this represents (dataset_description.json).
 
         Raises:
-            ValidationError: If any required metadata field is not provided.
+            ValidationError: If any required argument is None.
 
         """
-        if niftiImg is None:
-            raise ValidationError("Image cannot be None!")
-        elif not (isinstance(niftiImg, nib.Nifti1Image) or
-                  isinstance(niftiImg, nib.Nifti2Image)):
-            raise ValidationError("Image must be NIBabel Nifti 1 or 2 image!")
+        if image is None:
+            raise ValidationError("Image cannot be None")
+        elif not (isinstance(image, nib.Nifti1Image) or
+                  isinstance(image, nib.Nifti2Image)):
+            raise ValidationError("Image must be NIBabel Nifti 1 or 2 image, \
+                                   got type %s" % str(type(image)))
         else:
-            self.image = niftiImg
-            self.header = niftiImg.header
+            self.image = image
+            self.header = image.header
 
-        missingMetadata = self.findMissingMetadata(imgMetadata)
-        if missingMetadata != []:
-            errorMsg = "Image metadata missing these required fields: {}" \
-                .format(missingMetadata)
-            raise ValidationError(errorMsg)
+        if subject is None:
+            raise ValidationError("Subject cannot be none")
+        if task is None:
+            raise ValidationError("Task cannot be none")
+        if suffix is None:
+            raise ValidationError("Suffix cannot be none")
 
         self.imgMetadata = imgMetadata
 
@@ -74,8 +85,9 @@ class BidsIncremental:
             if missingFields != []:
                 errorMsg = "Dataset description provided, but missing these \
                         required fields: " + missingFields
-                raise ValidationError(missingFields)
+                raise ValidationError(errorMsg)
 
+        # The BIDS-I version for serialization
         self.version = 1
 
     def __str__(self):
@@ -85,13 +97,6 @@ class BidsIncremental:
             self.version)
 
     @staticmethod
-    def findMissingMetadata(metadata: dict) -> List[str]:
-        requiredMetadata = ['sub', 'task', 'contrast_label']
-        if metadata is None:
-            return requiredMetadata
-        else:
-            return [key for key in requiredMetadata
-                    if metadata.get(key) is None]
 
     def getFieldLabelString(self, bidsField: str) -> str:
         """
@@ -138,6 +143,7 @@ class BidsIncremental:
         return self.getFieldLabelString('task')
 
     def getDataTypeName(self):
+        # TODO: Support anatomical imaging too
         """ func or anat """
         return "func"
 
@@ -151,7 +157,7 @@ class BidsIncremental:
         """
         Create the a BIDS-compatible file name based on the metadata. General
         format of the filename, per BIDS standard 1.4.1, is as follows (items in
-        square brackets [] are considered optional):
+        [square brackets] are considered optional):
 
         sub-<label>[_ses-<label>]_task-<label>[_acq-<label>] [_ce-<label>]
         [_dir-<label>][_rec-<label>][_run-<index>]
@@ -204,7 +210,7 @@ class BidsIncremental:
         return self.makeBidsFileName(BidsFileExtension.METADATA)
 
     def getDatasetName(self) -> str:
-        return 'dataset'
+        return self.datasetMetadata["Name"]
 
     def makeDataDirPath(self) -> str:
         """
