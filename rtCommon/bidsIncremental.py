@@ -13,11 +13,14 @@ from typing import List
 
 import logging
 import nibabel as nib
+import numpy as np
 
 from bids.layout.writing import build_path as bidsBuildPath
 from bids.layout import parse_file_entities as bidsParseFileEntities
 from rtCommon.errors import ValidationError
 from rtCommon.bidsCommon import (
+    loadBidsEntities,
+    BidsEntityKeys,
     BidsFileExtension,
     BIDS_VERSION,
     DATASET_DESC_REQ_FIELDS,
@@ -26,7 +29,10 @@ from rtCommon.bidsCommon import (
 logger = logging.getLogger(__name__)
 
 
+
 class BidsIncremental:
+    ENTITIES = loadBidsEntities()
+
     """
     BIDS Incremental data format suitable for streaming BIDS Archives
     """
@@ -64,6 +70,7 @@ class BidsIncremental:
             self.image = image
             self.header = image.header
 
+        # Validate and store image metadata
         if subject is None:
             raise ValidationError("Subject cannot be none")
         if task is None:
@@ -71,21 +78,31 @@ class BidsIncremental:
         if suffix is None:
             raise ValidationError("Suffix cannot be none")
 
+        if imgMetadata is None:
+            imgMetadata = {}
+
+        imgMetadata["sub"] = subject
+        imgMetadata["task"] = task
+        imgMetadata["suffix"] = suffix
+
         self.imgMetadata = imgMetadata
 
-        if datasetMetadata is None:
-            datasetMetadata = {}
-            datasetMetadata["Name"] = "BIDS-Incremental Dataset"
-            datasetMetadata["BIDSVersion"] = str(BIDS_VERSION)
-        else:
+        # Validate dataset metadata or create default values
+        if datasetMetadata is not None:
             missingFields = [field for
                              field in DATASET_DESC_REQ_FIELDS
                              if datasetMetadata.get(field) is None]
 
             if missingFields != []:
                 errorMsg = "Dataset description provided, but missing these \
-                        required fields: " + missingFields
+                        required fields: " + str(missingFields)
                 raise ValidationError(errorMsg)
+        else:
+            datasetMetadata = {}
+            datasetMetadata["Name"] = "BIDS-Incremental Dataset from RT-Cloud"
+            datasetMetadata["BIDSVersion"] = str(BIDS_VERSION)
+
+        self.datasetMetadata = datasetMetadata
 
         # The BIDS-I version for serialization
         self.version = 1
@@ -96,62 +113,86 @@ class BidsIncremental:
             len(self.imgMetadata.keys()),
             self.version)
 
-    @staticmethod
+    def __eq__(self, other):
+        # Compare images
+        # TODO: Could do this more completely by save()'ing the images to disk,
+        # then diffing the files that they produce
+        if self.image.header != other.image.header:
+            return False
+        if not np.array_equal(self.image.get_fdata(), other.image.get_fdata()):
+            return False
 
-    def getFieldLabelString(self, bidsField: str) -> str:
+        # Compare image metadata
+        if not self.imgMetadata == other.imgMetadata:
+            return False
+
+        # Compare dataset metadata
+        if not self.datasetMetadata == other.datasetMetadata:
+            return False
+
+        return True
+
+    @classmethod
+    def parseBidsFieldsFromProtocolName(cls, protocolName: str) -> dict:
         """
-        Extracts the field-label combination for the provided BIDS Standard
-        field from this BIDS Incremental. Valid fields are defined in the "Task
-        (including resting state) imaging data" section of the BIDS standard,
-        and include examples like "sub", "ses", "task", and "run".
+        Extracts BIDS label-value combinations from a DICOM protocol name, if
+        any are present.
 
         Returns:
-            The label (e.g, '01' for 'sub') if present, None otherwise.
+            A dictionary containing any valid label-value combinations found.
         """
-        # See if value already cached
-        label = self.imgMetadata.get(bidsField, None)
-        if label is not None:
-            return label
-
-        # Attempt to extract from protocol name metadata if present
-        protocolName = self.imgMetadata.get('ProtocolName', None)
         if protocolName is None:
-            return None
+            return {}
 
         prefix = "(?:(?<=_)|(?<=^))"  # match beginning of string or underscore
         suffix = "(?:(?=_)|(?=$))"  # match end of string or underscore
+        fieldPat = "(?:{field}-)(.+?)"  # TODO: Document this regex
+        patternTemplate = prefix + fieldPat + suffix
 
-        pattern = "{prefix}(?:{field}-)(.+?){suffix}".format(prefix=prefix,
-                                                             field=bidsField,
-                                                             suffix=suffix)
-        result = re.search(pattern, protocolName)
+        foundEntities = {}
+        for entityValueDict in cls.ENTITIES.values():
+            entity = entityValueDict[BidsEntityKeys.ENTITY_KEY.value]
+            entitySearchPattern = patternTemplate.format(field=entity)
+            result = re.search(entitySearchPattern, protocolName)
 
-        if len(result.groups()) == 1:
-            return result.group(1)
-        else:
-            logger.debug("Failed to find exactly one match in protocol name \
-                    \'%s\' for field %s", protocolName, bidsField)
-            return None
+            if result is not None and len(result.groups()) == 1:
+                foundEntities[entity] = result.group(1)
 
-    def getSubjectID(self):
-        return self.getFieldLabelString('sub')
+        return foundEntities
 
-    def getSessionName(self):
-        return self.getFieldLabelString('ses')
+    # From the BIDS Spec: "A file name consists of a chain of entities, or
+    # key-value pairs, a suffix and an extension."
+    # Thus, we provide a set of methods to extract these values from the BIDS-I.
+    def getEntity(self, entityName) -> str:
+        """
+        Retrieve the entity value for the provided entity name from this BIDS
+        Incremental.
 
-    def getTaskName(self):
-        return self.getFieldLabelString('task')
+        Args:
+            entityName: The name of the BIDS entity to retrieve a value for.
+                A list of entity names is provided in the BIDS Standard.
 
+        Returns:
+            The entity value, or None if this BIDS incremental doesn't contain a
+            value for the entity name.
+
+        """
+        if self.ENTITIES.get(entityName) is None:
+            errorMsg = "'{}' is not a valid BIDS entity name".format(entityName)
+            logger.debug(errorMsg)
+            raise ValueError(errorMsg)
+
+    def getSuffix(self) -> str:
+        return self.imgMetadata.get(BidsFields.SUFFIX_KEY)
+
+    def getExtension(self) -> str:
+        return BidsFileExtension.IMAGE
+
+    # Additional
     def getDataTypeName(self):
         # TODO: Support anatomical imaging too
         """ func or anat """
         return "func"
-
-    def getRunLabel(self):
-        return self.getFieldLabelString('run')
-
-    def getContrastLabel(self):
-        return self.getFieldLabelString('contrast_label')
 
     def makeBidsFileName(self, extension: BidsFileExtension) -> str:
         """

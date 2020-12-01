@@ -6,11 +6,12 @@ Shared constants and functions used by modules working with BIDS data.
 
 -----------------------------------------------------------------------------"""
 from enum import Enum
-from functools import lru_cache
+import functools
 import os
 import re
 
 import pydicom
+import yaml
 
 from rtCommon.errors import ValidationError
 
@@ -26,6 +27,32 @@ class BidsFileExtension(Enum):
     IMAGE = '.nii'
     IMAGE_COMPRESSED = '.nii.gz'
     METADATA = '.json'
+
+
+# BIDS Entitiy information dict
+class BidsEntityKeys(Enum):
+    ENTITY_KEY = "entity"
+    FORMAT_KEY = "format"
+    DESCRIPTION_KEY = "description"
+
+# See test file for more specifics about expected format
+@functools.lru_cache(maxsize=1)
+def loadBidsEntities() -> dict:
+    # Assumes that this file and entities.yaml are in the same directory
+    filename = "entities.yaml"
+    rtCommonDir = os.path.dirname(os.path.realpath(__file__))
+    filePath = os.path.join(rtCommonDir, filename)
+
+    with open(filePath, mode='r', encoding="utf-8") as entities_file:
+        loadedEntities = yaml.safe_load(entities_file)
+
+        entities = {}
+        for valueDict in loadedEntities.values():
+            name = valueDict["name"]
+            del valueDict["name"]
+            entities[name] = valueDict
+
+        return entities
 
 
 def isNiftiPath(path: str) -> bool:
@@ -46,7 +73,7 @@ def isJsonPath(path: str) -> bool:
     return ext == '.json'
 
 
-@lru_cache(maxsize=128)
+@functools.lru_cache(maxsize=128)
 def makeDicomFieldBidsCompatible(field: str) -> str:
     """
     Remove characters to make field a BIDS-compatible
@@ -58,7 +85,7 @@ def makeDicomFieldBidsCompatible(field: str) -> str:
     return re.compile('[^a-zA-z]').sub("", field)
 
 
-@lru_cache(maxsize=128)
+@functools.lru_cache(maxsize=128)
 def dicomMetadataNameToBidsMetadataName(tag) -> str:
     try:
         (_, _, name, _, _) = pydicom.datadict.get_entry(tag)

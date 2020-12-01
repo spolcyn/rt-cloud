@@ -1,9 +1,12 @@
+import io
 import os
-import pytest
+import pickle
 import tempfile
 import time
 
-import rtCommon.bidsStructures as bs
+import pytest
+
+from rtCommon.bidsIncremental import BidsIncremental
 from rtCommon.errors import ValidationError
 from rtCommon.imageHandling import convertDicomFileToNifti, readNifti
 from tests.common import test_inputDir, test_dicomFile
@@ -27,22 +30,111 @@ def sampleNiftiImage():
     os.remove(niftiPath)
 
 @pytest.fixture
-def validMetadataDict():
-    return {'sub': '01', 'task': 'aTask', 'contrast_label': 'bold'}
+def requiredMetadataDict():
+    return {'subject': '01', 'task': 'aTask', 'suffix': 'bold'}
 
-def test_createBidsIncremental(sampleNiftiImage, validMetadataDict):
-    # BIDS-I constructor must have non-None arguments
+@pytest.fixture
+def validBidsIncremental(sampleNiftiImage, requiredMetadataDict):
+    return BidsIncremental(image=sampleNiftiImage,
+                           subject=requiredMetadataDict["subject"],
+                           task=requiredMetadataDict["task"],
+                           suffix=requiredMetadataDict["suffix"])
+
+nonePermutations = [{"subject": None, "task": None, "suffix": None},
+                    {"subject": "test", "task": None, "suffix": None},
+                    {"subject": "test", "task": "test", "suffix": None}]
+
+@pytest.mark.parametrize("argDict", nonePermutations)
+def testNullConstruction(sampleNiftiImage, requiredMetadataDict, argDict):
+    # Test empty image
     with pytest.raises(ValidationError):
-        bs.BidsIncremental(None, None)
+        BidsIncremental(image=None,
+                        subject=requiredMetadataDict["subject"],
+                        task=requiredMetadataDict["task"],
+                        suffix=requiredMetadataDict["suffix"])
 
-    # BIDS-I constructor must have metadata provided
+        # Test empty required fields
+        for p in nonePermutations:
+            with pytest.raises(ValidationError) as excinfo:
+                BidsIncremental(image=sampleNiftiImage,
+                                subject=p["subject"],
+                                task=p["task"],
+                                suffix=p["suffix"])
+            assert "Image" not in str(excinfo.value)
+
+def testValidConstruction(sampleNiftiImage, requiredMetadataDict):
+    bidsInc = BidsIncremental(image=sampleNiftiImage,
+                              subject=requiredMetadataDict["subject"],
+                              task=requiredMetadataDict["task"],
+                              suffix=requiredMetadataDict["suffix"])
+    assert bidsInc is not None
+
+def testDatasetMetadata(sampleNiftiImage, requiredMetadataDict):
+    # Test invalid dataset metadata
     with pytest.raises(ValidationError):
-        bs.BidsIncremental(sampleNiftiImage, None)
+        BidsIncremental(image=sampleNiftiImage,
+                        subject=requiredMetadataDict["subject"],
+                        task=requiredMetadataDict["task"],
+                        suffix=requiredMetadataDict["suffix"],
+                        datasetMetadata={"random_field": "doesnt work"})
 
-    # BIDS-I constructor must have all required metadata provided
-    with pytest.raises(ValidationError):
-        requiredFields = dict.fromkeys(['sub', 'task', 'contrast_label'], None)
-        bs.BidsIncremental(sampleNiftiImage, None)
+    # Test valid dataset metadata
+    bidsInc = BidsIncremental(image=sampleNiftiImage,
+                              subject=requiredMetadataDict["subject"],
+                              task=requiredMetadataDict["task"],
+                              suffix=requiredMetadataDict["suffix"],
+                              datasetMetadata={"Name": "Test dataset",
+                                               "BIDSVersion": "1.0"})
+    assert bidsInc is not None
 
-    # Build valid BIDS-I
-    assert bs.BidsIncremental(sampleNiftiImage, validMetadataDict) is not None
+
+
+# Test that extracting metadata from the BIDS-I using its provided API returns
+# the correct values
+def testMetadataOutput(validBidsIncremental):
+    with pytest.raises(ValueError):
+        validBidsIncremental.getEntity("InvalidEntityName")
+
+    # TODO
+
+    pass
+
+# Test that the BIDS-I properly parses BIDS fields present in a DICOM
+# ProtocolName header field
+def testParseProtocolName():
+    protocolName = "func_ses-01_task-story_run-01"
+    expectedValues = {'ses': '01', 'task': 'story', 'run': '01'}
+
+    parsedValues = BidsIncremental.parseBidsFieldsFromProtocolName(protocolName)
+
+    for key, expectedValue in expectedValues.items():
+        assert parsedValues[key] == expectedValue
+
+
+# Test that constructing BIDS-compatible filenames from internal metadata
+# returns the correct filenames
+def testFilenameConstruction():
+    pass
+
+# Test that the hypothetical path for the BIDS-I if it were in an archive is
+# correct based on the metadata within it
+def testArchivePathConstruction():
+    pass
+
+# Test that writing the BIDS-I to disk returns a properly formatted BIDS archive
+# in the correct location with all the data in the BIDS-I
+def testDiskOutput():
+    pass
+
+# Test serialization results in equivalent BIDS-I object
+def testSerialization(validBidsIncremental):
+    # Pickle the object
+    pickledBuf = io.BytesIO()
+    pickle.dump(validBidsIncremental, pickledBuf)
+
+    # Unpickle the object
+    pickledBuf.seek(0)
+    unpickled = pickle.load(pickledBuf)
+
+    # Compare equality
+    assert unpickled == validBidsIncremental
