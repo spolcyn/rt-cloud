@@ -2,7 +2,7 @@
 
 bidsLibrary.py
 
-Implement conversion between DICOM, BIDS-Incremental (BIDS-I), and BIDS on-disk.
+Implement conversion between DICOM, BIDS-Incremental (BIDS-I), and BIDS.
 
 -----------------------------------------------------------------------------"""
 import json
@@ -76,9 +76,9 @@ def dicomToBidsinc(dicomImg: pydicom.dataset.Dataset) -> BidsIncremental:
     publicMeta, privateMeta = getMetadata(dicomImg)
 
     publicMeta.update(privateMeta)  # combine metadata dictionaries
-    requiredMetadata = {'sub': '002', 'task': 'story', 'contrast_label': 'bold'}
+    requiredMetadata = {'sub': '002', 'task': 'story', 'suffix': 'bold'}
     publicMeta.update(requiredMetadata)
-    return BidsIncremental(niftiImage, publicMeta)
+    return BidsIncremental(niftiImage, '002', 'story', 'bold', publicMeta)
 
 
 def verifyNiftiHeadersMatch(img1: nib.Nifti1Image, img2: nib.Nifti1Image):
@@ -286,29 +286,30 @@ def appendBidsinc(incremental: BidsIncremental,
 
 
 def bidsToBidsinc(archive: BidsArchive,
-                  subjectID: str,
-                  sessionID: str,
+                  subject: str,
+                  session: str,
+                  task: str,
                   dataType: str,
                   imageIndex: int = 0,
-                  taskName: str = "",
-                  contrastLabel: str = "",
-                  otherLabels: dict = {}):
+                  suffix: str = None,
+                  otherLabels: dict = None):
     """
     Creates a BIDS-Incremental file from the specified part of the BIDS Archive.
 
     Args:
         archive: The archive to pull data from
-        subjectID: Subject ID to pull data for (for "sub-control01", ID is
+        subject: Subject ID to pull data for (for "sub-control01", ID is
             "control01")
-        sessionID: Session ID to pull data for (for "ses-2020", ID is "2020")
-        taskName: Task to pull data for (for "task-nback", name is "nback")
-        contrastLabel: Image contrast to pull images for (bold, cbv, or phase)
+        session: Session ID to pull data for (for "ses-2020", ID is "2020")
+        task: Task to pull data for (for "task-nback", name is "nback")
+        suffix: BIDS suffix for file, which is image contrast for fMRI (bold,
+            cbv, or phase)
+        imageIndex: Index of 3_D image to select in a 4-D sequence of images.
         dataType: Type of data to pull (common types: anat, func, dwi, fmap).
             This string must be the same as the name of the directory containing
             the image data.
         otherLabels: Other labels specifying appropriate file to pull data for
             (for "sub-control01_task-nback_bold", label is "task-nback_bold").
-        imageIndex: Index of image to pull if specifying a 4-D sequence.
 
     Returns:
         BIDS-Incremental file with the specified image of the archive and its
@@ -320,9 +321,9 @@ def bidsToBidsinc(archive: BidsArchive,
         "sub-01/ses-2020/func/sub-01_task-nback_bold.nii"
 
     """
-    archivePath = "sub-{}".format(subjectID)
-    if sessionID is not None:
-        archivePath = os.path.join(archivePath, "ses-{}".format(sessionID))
+    archivePath = "sub-{}".format(subject)
+    if session is not None:
+        archivePath = os.path.join(archivePath, "ses-{}".format(session))
     archivePath = os.path.join(archivePath, dataType)
 
     matchingFilePaths = archive.getFilesForPath(archivePath)
@@ -333,17 +334,17 @@ def bidsToBidsinc(archive: BidsArchive,
 
     # Fail if no images
     if not niftiPaths:
-        logger.debug("Failed to find any matching images in the archive to \
-                      make a BIDS-I from!")
+        logger.error("Failed to find any matching images in the archive to "
+                     " make a BIDS-I from")
         return None
 
     # Warn if no metadata
     if not metaPaths:
-        logger.debug("Failed to find any matching metadata in the archive to \
-                      include in a BIDS-I!")
+        logger.warning("Failed to find any matching metadata in the archive to "
+                       "include in a BIDS-I")
 
-    metadata = {'sub': subjectID, 'ses': sessionID, 'task': taskName,
-                'contrast_label': contrastLabel}
+    metadata = {'sub': subject, 'ses': session, 'task': task,
+                'suffix': suffix}
     image = None
 
     def pathEntitiesMatch(path) -> bool:
@@ -353,13 +354,20 @@ def bidsToBidsinc(archive: BidsArchive,
         """
         entities = parse_file_entities(path)
 
+        if entities.get("task") != task or \
+           entities.get("subject") != subject or \
+           entities.get("session") != session:
+            return False
+
         if otherLabels:
             for label, value in otherLabels.items():
                 if entities.get(label) != value:
                     return False
 
-        return (entities.get("task") == taskName and
-                entities.get("suffix") == contrastLabel)
+        if suffix and entities.get("suffix") != suffix:
+            return False
+
+        return True
 
     for path in niftiPaths:
         if pathEntitiesMatch(path):
@@ -372,12 +380,19 @@ def bidsToBidsinc(archive: BidsArchive,
                 metadata.update(json.load(metadataFile))
             break
 
-    if image is not None:
+    if image is None:
+        logger.error("Failed to find matching image in BIDS Archive \
+                     for provided metadata")
+        return None
+    elif len(image.dataobj.shape) == 3:
+        if imageIndex != 0:
+            logger.error("Matching image was a 3-D NIfTI; time index %d is too "
+                         "high for a 3-D NIfTI (must be 0)", imageIndex)
+            return None
+        return BidsIncremental(image, subject, task, suffix, metadata)
+    else:
         # https://nipy.org/nibabel/images_and_memory.html
         targetSlice = image.dataobj[..., imageIndex]
         newImage = nib.Nifti1Image(targetSlice, image.affine, image.header)
-        newImage.update_header()  # reset header to reflect new dimensions
-        return BidsIncremental(newImage, metadata)
-    else:
-        logger.debug("Failed to find image for BIDS-I in the BIDS archive!")
-        return None
+        newImage.update_header()  # update header to reflect new dimensions
+        return BidsIncremental(newImage, subject, task, suffix, metadata)

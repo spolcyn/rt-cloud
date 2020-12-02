@@ -29,7 +29,6 @@ from rtCommon.bidsCommon import (
 logger = logging.getLogger(__name__)
 
 
-
 class BidsIncremental:
     ENTITIES = loadBidsEntities()
 
@@ -44,7 +43,7 @@ class BidsIncremental:
                  imgMetadata: dict = None,
                  datasetMetadata: dict = None):
         """
-        Initializes a BIDS Incremental object with required data and metadata.
+        Initializes a BIDS Incremental object with provided image and metadata.
 
         Args:
             image: Nifti image for this BIDS-I as an NiBabel NiftiImage.
@@ -79,13 +78,17 @@ class BidsIncremental:
             raise ValidationError("Suffix cannot be none")
 
         if imgMetadata is None:
-            imgMetadata = {}
+            self.imgMetadata = {}
+        else:
+            self.imgMetadata = imgMetadata
 
-        imgMetadata["sub"] = subject
-        imgMetadata["task"] = task
-        imgMetadata["suffix"] = suffix
+        self.imgMetadata["Subject"] = subject
+        self.imgMetadata["Task"] = task
+        self.imgMetadata["Suffix"] = suffix
 
-        self.imgMetadata = imgMetadata
+        protocolName = imgMetadata.get("ProtocolName")
+        if protocolName is not None:
+            self.imgMetadata.update(self.parseBidsFieldsFromProtocolName(protocolName))
 
         # Validate dataset metadata or create default values
         if datasetMetadata is not None:
@@ -150,14 +153,15 @@ class BidsIncremental:
         patternTemplate = prefix + fieldPat + suffix
 
         foundEntities = {}
-        for entityValueDict in cls.ENTITIES.values():
+        for entityName, entityValueDict in cls.ENTITIES.items():
             entity = entityValueDict[BidsEntityKeys.ENTITY_KEY.value]
             entitySearchPattern = patternTemplate.format(field=entity)
             result = re.search(entitySearchPattern, protocolName)
 
             if result is not None and len(result.groups()) == 1:
-                foundEntities[entity] = result.group(1)
+                foundEntities[entityName] = result.group(1)
 
+        logger.debug("Found entities: %s", foundEntities)
         return foundEntities
 
     # From the BIDS Spec: "A file name consists of a chain of entities, or
@@ -182,17 +186,30 @@ class BidsIncremental:
             logger.debug(errorMsg)
             raise ValueError(errorMsg)
 
-    def getSuffix(self) -> str:
-        return self.imgMetadata.get(BidsFields.SUFFIX_KEY)
+        return self.imgMetadata.get(entityName, None)
 
-    def getExtension(self) -> str:
+    def getSuffix(self) -> str:
+        return self.imgMetadata.get("Suffix")
+
+    # A BIDS-I produces two files, with different extensions
+    def getImageExtension(self) -> str:
         return BidsFileExtension.IMAGE
 
-    # Additional
+    def getMetadataExtension(self) -> str:
+        return BidsFileExtension.METADATA
+
+    # Additional methods to access internal BIDS-I data
     def getDataTypeName(self):
         # TODO: Support anatomical imaging too
         """ func or anat """
         return "func"
+
+    # Getting NIfTI internal images
+    def getImageData(self):
+        return self.image.get_fdata()
+
+    def getImageHeader(self):
+        return self.image.header
 
     def makeBidsFileName(self, extension: BidsFileExtension) -> str:
         """
@@ -213,19 +230,19 @@ class BidsIncremental:
         """
         labelPairs = []  # all potential BIDS field-label pairs in the filename
 
-        labelPairs.append('sub-' + self.getSubjectID())
+        labelPairs.append('sub-' + self.getEntity("Subject"))
 
-        sesName = self.getSessionName()
+        sesName = self.getEntity("Session")
         if sesName:
             labelPairs.append('ses-' + sesName)
 
-        labelPairs.append('task-' + self.getTaskName())
+        labelPairs.append('task-' + self.getEntity("Task"))
 
-        runName = self.getRunLabel()
+        runName = self.getEntity("Run")
         if runName:
             labelPairs.append('run-' + runName)
 
-        labelPairs.append(self.getContrastLabel())
+        labelPairs.append(self.getSuffix())
 
         """
         # distinguish using diff params for acquiring same task
@@ -265,8 +282,8 @@ class BidsIncremental:
             /sub-01/ses-2011/anat/
         """
         return os.path.join("",
-                            'sub-' + self.getSubjectID(),
-                            'ses-' + self.getSessionName(),
+                            'sub-' + self.getEntity("Subject"),
+                            'ses-' + self.getEntity("Session"),
                             self.getDataTypeName(),
                             "")
 
@@ -274,7 +291,13 @@ class BidsIncremental:
         dataDir = self.makeDataDirPath()
         return os.path.join(dataDir, self.getImageFileName())
 
-    def writeToFile(self, directoryPath: str):
+    # TODO: Write a BIDS-I to a valid BIDS Archive on disk
+    # TODO: Call BIDS Validator on that BIDS Archive
+    def writeToArchive(self, directoryPath: str):
+        """
+        Args:
+            directoryPath: Location to write the BIDS-I derived BIDS Archive
+        """
         # Create folder structure -- just func for now
         datasetDir = os.path.join(directoryPath, "dataset")
         try:
