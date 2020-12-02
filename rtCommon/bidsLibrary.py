@@ -289,9 +289,9 @@ def bidsToBidsinc(archive: BidsArchive,
                   subject: str,
                   session: str,
                   task: str,
+                  suffix: str,
                   dataType: str,
                   imageIndex: int = 0,
-                  suffix: str = None,
                   otherLabels: dict = None):
     """
     Creates a BIDS-Incremental file from the specified part of the BIDS Archive.
@@ -308,8 +308,8 @@ def bidsToBidsinc(archive: BidsArchive,
         dataType: Type of data to pull (common types: anat, func, dwi, fmap).
             This string must be the same as the name of the directory containing
             the image data.
-        otherLabels: Other labels specifying appropriate file to pull data for
-            (for "sub-control01_task-nback_bold", label is "task-nback_bold").
+        otherLabels: Other entity labels specifying appropriate file to pull
+            data for (e.g., 'run', 'rec', 'dir', 'echo')
 
     Returns:
         BIDS-Incremental file with the specified image of the archive and its

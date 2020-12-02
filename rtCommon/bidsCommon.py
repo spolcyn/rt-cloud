@@ -50,6 +50,7 @@ def loadBidsEntities() -> dict:
         for valueDict in loadedEntities.values():
             name = valueDict["name"]
             del valueDict["name"]
+            name = name.lower()
             entities[name] = valueDict
 
         return entities

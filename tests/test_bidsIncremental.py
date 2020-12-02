@@ -103,7 +103,7 @@ def testMetadataOutput(validBidsIncremental):
 # ProtocolName header field
 def testParseProtocolName():
     protocolName = "func_ses-01_task-story_run-01"
-    expectedValues = {'ses': '01', 'task': 'story', 'run': '01'}
+    expectedValues = {'session': '01', 'task': 'story', 'run': '01'}
 
     parsedValues = BidsIncremental.parseBidsFieldsFromProtocolName(protocolName)
 

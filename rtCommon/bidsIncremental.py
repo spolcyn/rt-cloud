@@ -20,7 +20,7 @@ from bids.layout import parse_file_entities as bidsParseFileEntities
 from rtCommon.errors import ValidationError
 from rtCommon.bidsCommon import (
     loadBidsEntities,
-    BidsEntityKeys,
+    BidsEntityKeys as bek,
     BidsFileExtension,
     BIDS_VERSION,
     DATASET_DESC_REQ_FIELDS,
@@ -82,11 +82,11 @@ class BidsIncremental:
         else:
             self.imgMetadata = imgMetadata
 
-        self.imgMetadata["Subject"] = subject
-        self.imgMetadata["Task"] = task
-        self.imgMetadata["Suffix"] = suffix
+        self.imgMetadata["subject"] = subject
+        self.imgMetadata["task"] = task
+        self.imgMetadata["suffix"] = suffix
 
-        protocolName = imgMetadata.get("ProtocolName")
+        protocolName = self.imgMetadata.get("ProtocolName")
         if protocolName is not None:
             self.imgMetadata.update(self.parseBidsFieldsFromProtocolName(protocolName))
 
@@ -154,7 +154,7 @@ class BidsIncremental:
 
         foundEntities = {}
         for entityName, entityValueDict in cls.ENTITIES.items():
-            entity = entityValueDict[BidsEntityKeys.ENTITY_KEY.value]
+            entity = entityValueDict[bek.ENTITY_KEY.value]
             entitySearchPattern = patternTemplate.format(field=entity)
             result = re.search(entitySearchPattern, protocolName)
 
@@ -189,7 +189,7 @@ class BidsIncremental:
         return self.imgMetadata.get(entityName, None)
 
     def getSuffix(self) -> str:
-        return self.imgMetadata.get("Suffix")
+        return self.imgMetadata.get("suffix")
 
     # A BIDS-I produces two files, with different extensions
     def getImageExtension(self) -> str:
@@ -230,15 +230,15 @@ class BidsIncremental:
         """
         labelPairs = []  # all potential BIDS field-label pairs in the filename
 
-        labelPairs.append('sub-' + self.getEntity("Subject"))
+        labelPairs.append('sub-' + self.getEntity("subject"))
 
-        sesName = self.getEntity("Session")
+        sesName = self.getEntity("session")
         if sesName:
             labelPairs.append('ses-' + sesName)
 
-        labelPairs.append('task-' + self.getEntity("Task"))
+        labelPairs.append('task-' + self.getEntity("task"))
 
-        runName = self.getEntity("Run")
+        runName = self.getEntity("run")
         if runName:
             labelPairs.append('run-' + runName)
 
@@ -282,8 +282,8 @@ class BidsIncremental:
             /sub-01/ses-2011/anat/
         """
         return os.path.join("",
-                            'sub-' + self.getEntity("Subject"),
-                            'ses-' + self.getEntity("Session"),
+                            'sub-' + self.getEntity("subject"),
+                            'ses-' + self.getEntity("session"),
                             self.getDataTypeName(),
                             "")
 
