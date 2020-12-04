@@ -15,6 +15,25 @@ import sys
 sys.path.insert(0, os.path.abspath('../../'))
 print(sys.path)
 
+# mock for big imports
+autodoc_mock_imports = ['bcrypt',
+                        'bids',
+                        'rtCommon',
+                        'matplotlib',
+                        'nibabel',
+                        'OpenSSL',
+                        'inotify',
+                        'pydicom',
+                        'rpyc',
+                        'cryptography',
+                        'brainiak',
+                        'websocket', 'nilearn',
+                        'watchdog',
+                        'rtCommon.harness', 'numpy',
+                        'scipy',
+                        'tornado',
+                        'toml',
+                        'yaml']
 
 # -- Project information -----------------------------------------------------
 
