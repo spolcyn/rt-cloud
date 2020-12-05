@@ -116,14 +116,6 @@ rtCommon.fileWatcher module
    :undoc-members:
    :show-inheritance:
 
-rtCommon.harness module
------------------------
-
-.. automodule:: rtCommon.harness
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
 rtCommon.imageHandling module
 -----------------------------
 
