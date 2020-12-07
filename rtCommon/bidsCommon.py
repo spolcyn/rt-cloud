@@ -35,6 +35,7 @@ class BidsEntityKeys(Enum):
     FORMAT_KEY = "format"
     DESCRIPTION_KEY = "description"
 
+
 # See test file for more specifics about expected format
 @functools.lru_cache(maxsize=1)
 def loadBidsEntities() -> dict:

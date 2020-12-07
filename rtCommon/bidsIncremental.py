@@ -6,17 +6,13 @@ Implements the BIDS Incremental data type used for streaming BIDS data between
 different applications.
 
 -----------------------------------------------------------------------------"""
-from functools import lru_cache
 import os
 import re
-from typing import List
 
 import logging
 import nibabel as nib
 import numpy as np
 
-from bids.layout.writing import build_path as bidsBuildPath
-from bids.layout import parse_file_entities as bidsParseFileEntities
 from rtCommon.errors import ValidationError
 from rtCommon.bidsCommon import (
     loadBidsEntities,
@@ -88,7 +84,8 @@ class BidsIncremental:
 
         protocolName = self.imgMetadata.get("ProtocolName")
         if protocolName is not None:
-            self.imgMetadata.update(self.parseBidsFieldsFromProtocolName(protocolName))
+            self.imgMetadata.update(
+                self.parseBidsFieldsFromProtocolName(protocolName))
 
         # Validate dataset metadata or create default values
         if datasetMetadata is not None:
@@ -204,12 +201,15 @@ class BidsIncremental:
         """ func or anat """
         return "func"
 
-    # Getting NIfTI internal images
+    # Getting internal NIfTI data
     def getImageData(self):
         return self.image.get_fdata()
 
     def getImageHeader(self):
         return self.image.header
+
+    def getImageDimensions(self) -> np.ndarray:
+        return self.image.get("dim")
 
     def makeBidsFileName(self, extension: BidsFileExtension) -> str:
         """

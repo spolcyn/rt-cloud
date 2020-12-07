@@ -1,18 +1,19 @@
 import io
+import logging
 import os
 import pickle
 import tempfile
 import time
 
 import pytest
+import numpy as np
 
 from rtCommon.bidsIncremental import BidsIncremental
 from rtCommon.errors import ValidationError
 from rtCommon.imageHandling import convertDicomFileToNifti, readNifti
 from tests.common import test_inputDir, test_dicomFile
 
-
-@pytest.fixture
+@pytest.yield_fixture
 def sampleNiftiImage():
     dicomPath = os.path.join(os.path.dirname(__file__),
                              test_inputDir,
@@ -34,7 +35,7 @@ def requiredMetadataDict():
     return {'subject': '01', 'task': 'aTask', 'suffix': 'bold'}
 
 @pytest.fixture
-def validBidsIncremental(sampleNiftiImage, requiredMetadataDict):
+def validBidsI(sampleNiftiImage, requiredMetadataDict):
     return BidsIncremental(image=sampleNiftiImage,
                            subject=requiredMetadataDict["subject"],
                            task=requiredMetadataDict["task"],
@@ -91,9 +92,9 @@ def testDatasetMetadata(sampleNiftiImage, requiredMetadataDict):
 
 # Test that extracting metadata from the BIDS-I using its provided API returns
 # the correct values
-def testMetadataOutput(validBidsIncremental):
+def testMetadataOutput(validBidsI):
     with pytest.raises(ValueError):
-        validBidsIncremental.getEntity("InvalidEntityName")
+        validBidsI.getEntity("InvalidEntityName")
 
     # TODO
 
@@ -110,6 +111,29 @@ def testParseProtocolName():
     for key, expectedValue in expectedValues.items():
         assert parsedValues[key] == expectedValue
 
+# Test that the BIDS-I interface methods for extracting internal NIfTI data
+# return the correct values
+def testQueryNifti(validBidsI):
+    # Image data
+    assert np.array_equal(validBidsI.getImageData(),
+                          validBidsI.image.get_fdata())
+
+    # Header Data
+    queriedHeader = validBidsI.getImageHeader()
+    exactHeader = validBidsI.image.header
+
+    # Compare full image header
+    assert queriedHeader.keys() == exactHeader.keys()
+    for (field, queryValue) in queriedHeader.items():
+        exactValue = exactHeader.get(field)
+        if queryValue.dtype.char == 'S':
+            assert queryValue == exactValue
+        else:
+            assert np.allclose(queryValue, exactValue, atol=0.0, equal_nan=True)
+
+    # Compare Header field: Dimensions
+    FIELD = "dim"
+    assert np.array_equal(queriedHeader.get(FIELD), exactHeader.get(FIELD))
 
 # Test that constructing BIDS-compatible filenames from internal metadata
 # returns the correct filenames
@@ -127,14 +151,14 @@ def testDiskOutput():
     pass
 
 # Test serialization results in equivalent BIDS-I object
-def testSerialization(validBidsIncremental):
+def testSerialization(validBidsI):
     # Pickle the object
     pickledBuf = io.BytesIO()
-    pickle.dump(validBidsIncremental, pickledBuf)
+    pickle.dump(validBidsI, pickledBuf)
 
     # Unpickle the object
     pickledBuf.seek(0)
     unpickled = pickle.load(pickledBuf)
 
     # Compare equality
-    assert unpickled == validBidsIncremental
+    assert unpickled == validBidsI
