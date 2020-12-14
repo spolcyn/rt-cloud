@@ -42,7 +42,7 @@ def requiredMetadataDict():
 @pytest.fixture
 def validBidsI(sampleNiftiImage, requiredMetadataDict):
     """
-    Constructs and returns a known-valid BIDS-Incremental
+    Constructs and returns a known-valid BIDS-Incremental using known metadata.
     """
     return BidsIncremental(image=sampleNiftiImage,
                            subject=requiredMetadataDict["subject"],
@@ -96,7 +96,7 @@ def testDatasetMetadata(sampleNiftiImage, requiredMetadataDict):
                               suffix=requiredMetadataDict["suffix"],
                               datasetMetadata={"Name": dataset_name,
                                                "BIDSVersion": "1.0"})
-    assert bidsInc.getDatasetName() == dataset_name
+    assert bidsInc.datasetName() == dataset_name
 
 
 
@@ -107,12 +107,12 @@ def testMetadataOutput(validBidsI, requiredMetadataDict):
         validBidsI.getEntity("InvalidEntityName")
 
     # Data type - always 'func' currently
-    assert validBidsI.getDataTypeName() == "func"
+    assert validBidsI.dataType() == "func"
     # Entities
     assert validBidsI.getEntity('subject') == requiredMetadataDict["subject"]
     assert validBidsI.getEntity('task') == requiredMetadataDict["task"]
     # Suffix
-    assert validBidsI.getSuffix() == requiredMetadataDict["suffix"]
+    assert validBidsI.suffix() == requiredMetadataDict["suffix"]
 
 # Test that the BIDS-I properly parses BIDS fields present in a DICOM
 # ProtocolName header field
@@ -129,11 +129,11 @@ def testParseProtocolName():
 # return the correct values
 def testQueryNifti(validBidsI):
     # Image data
-    assert np.array_equal(validBidsI.getImageData(),
+    assert np.array_equal(validBidsI.imageData(),
                           validBidsI.image.get_fdata())
 
     # Header Data
-    queriedHeader = validBidsI.getImageHeader()
+    queriedHeader = validBidsI.imageHeader()
     exactHeader = validBidsI.image.header
 
     # Compare full image header
@@ -164,12 +164,22 @@ def testFilenameConstruction(validBidsI, requiredMetadataDict):
 
 # Test that the hypothetical path for the BIDS-I if it were in an archive is
 # correct based on the metadata within it
-def testArchivePathConstruction():
-    pass
+def testArchivePathConstruction(validBidsI, requiredMetadataDict):
+    session = "01"
+    validBidsI.addEntity("session", session)
+
+    assert validBidsI.dataDirPath() == \
+        "/sub-{}/ses-{}/func/".format(requiredMetadataDict["subject"], session)
+
+    validBidsI.removeEntity("session")
 
 # Test that writing the BIDS-I to disk returns a properly formatted BIDS archive
 # in the correct location with all the data in the BIDS-I
-def testDiskOutput():
+def testDiskOutput(validBidsI):
+    directoryPath = "/tmp"
+    validBidsI.writeToArchive(directoryPath)
+    # TODO: Validate with Pybids
+
     pass
 
 # Test serialization results in equivalent BIDS-I object

@@ -6,6 +6,7 @@ Implements the BIDS Incremental data type used for streaming BIDS data between
 different applications.
 
 -----------------------------------------------------------------------------"""
+import json
 import os
 import re
 
@@ -189,32 +190,77 @@ class BidsIncremental:
 
         return self.imgMetadata.get(entityName, None)
 
-    def getSuffix(self) -> str:
+    def addEntity(self, entityName: str, entityValue: str) -> None:
+        """
+        Add an entity name-value pair to the BIDS Incremental's metadata. Be
+        sure to use the full entity name, e.g., 'subject' instead of 'sub'.
+
+        Args:
+            entityName: The name of the BIDS entity to set a value for.
+                A list of entity names is provided in the BIDS Standard. For
+                example, use 'subject' for subject.
+            entityValue: The value to set for the provided entity.
+
+        """
+        if self.ENTITIES.get(entityName) is None:
+            errorMsg = "'{}' is not a valid BIDS entity name".format(entityName)
+            logger.debug(errorMsg)
+            raise ValueError(errorMsg)
+
+        self.imgMetadata[entityName] = entityValue
+
+    def removeEntity(self, entityName: str) -> None:
+        """
+        Remove a entity name-value pair to the BIDS Incremental's metadata. Be
+        sure to use the full entity name, e.g., 'subject' instead of 'sub'.
+
+        Args:
+            entityName: The name of the BIDS entity to remove.  A list of entity
+                names is provided in the BIDS Standard. For example, use
+                'subject' for subject.
+
+        """
+        if self.ENTITIES.get(entityName) is None:
+            errorMsg = "'{}' is not a valid BIDS entity name".format(entityName)
+            logger.debug(errorMsg)
+            raise ValueError(errorMsg)
+
+        self.imgMetadata.pop(entityName, None)
+
+    def suffix(self) -> str:
         return self.imgMetadata.get("suffix")
 
     # A BIDS-I produces two files, with different extensions
-    def getImageExtension(self) -> str:
+    def imageExtension(self) -> str:
         return BidsFileExtension.IMAGE
 
-    def getMetadataExtension(self) -> str:
+    def metadataExtension(self) -> str:
         return BidsFileExtension.METADATA
 
     # Additional methods to access internal BIDS-I data
-    def getDataTypeName(self):
+    def dataType(self):
         # TODO: Support anatomical imaging too
         """ func or anat """
         return "func"
 
     # Getting internal NIfTI data
-    def getImageData(self):
+    def imageData(self):
         return self.image.get_fdata()
 
-    def getImageHeader(self):
+    def imageHeader(self):
         return self.image.header
 
-    def getImageDimensions(self) -> np.ndarray:
+    def imageDimensions(self) -> np.ndarray:
         return self.image.get("dim")
 
+    """
+    BEGIN BIDS-I ARCHIVE EMULTATION API
+
+    A BIDS-I is meant to emulate a valid BIDS archive. Thus, an API is included
+    that enables generating paths and filenames that would corresopnd to this
+    BIDS-I's data if it were actually in an on-disk archive.
+
+    """
     def makeBidsFileName(self, extension: BidsFileExtension) -> str:
         """
         Create the a BIDS-compatible file name based on the metadata. General
@@ -246,7 +292,7 @@ class BidsIncremental:
         if runName:
             labelPairs.append('run-' + runName)
 
-        labelPairs.append(self.getSuffix())
+        labelPairs.append(self.suffix())
 
         """
         # distinguish using diff params for acquiring same task
@@ -265,16 +311,20 @@ class BidsIncremental:
 
         return '_'.join(labelPairs) + extension.value
 
-    def getImageFileName(self) -> str:
+    def imageFileName(self) -> str:
         return self.makeBidsFileName(BidsFileExtension.IMAGE)
 
-    def getMetadataFileName(self) -> str:
+    def makeImageFilePath(self) -> str:
+        dataDir = self.makeDataDirPath()
+        return os.path.join(dataDir, self.imageFileName())
+
+    def metadataFileName(self) -> str:
         return self.makeBidsFileName(BidsFileExtension.METADATA)
 
-    def getDatasetName(self) -> str:
+    def datasetName(self) -> str:
         return self.datasetMetadata["Name"]
 
-    def makeDataDirPath(self) -> str:
+    def dataDirPath(self) -> str:
         """
         Returns the path to the data directory this incremental's data would be
         in if it were in a full BIDS archive.
@@ -282,18 +332,20 @@ class BidsIncremental:
         Returns:
             Path string relative to root of the imaginary dataset.
         Examples:
-            >>> print(bidsi.makePath())
+            >>> print(bidsi.dataDirPath())
             /sub-01/ses-2011/anat/
-        """
-        return os.path.join("",
-                            'sub-' + self.getEntity("subject"),
-                            'ses-' + self.getEntity("session"),
-                            self.getDataTypeName(),
-                            "")
 
-    def makeImageFilePath(self) -> str:
-        dataDir = self.makeDataDirPath()
-        return os.path.join(dataDir, self.getImageFileName())
+        """
+        pathElements = ['sub-' + self.getEntity("subject")]
+
+        session = self.getEntity("session")
+        if session:
+            pathElements.append('ses-' + session)
+
+        pathElements.append(self.dataType())
+        pathElements.append("")
+
+        return os.path.join("/", *pathElements)
 
     # TODO: Write a BIDS-I to a valid BIDS Archive on disk
     # TODO: Call BIDS Validator on that BIDS Archive
@@ -302,52 +354,29 @@ class BidsIncremental:
         Args:
             directoryPath: Location to write the BIDS-I derived BIDS Archive
         """
-        # Create folder structure -- just func for now
-        datasetDir = os.path.join(directoryPath, "dataset")
-        try:
-            os.mkdir(datasetDir)
-        except FileExistsError:
-            pass
+        # Build path to the data directory
+        # Overall hierarchy:
+        # sub-<participant_label>/[/ses-<session_label>]/<data_type>/
+        pathElements = [self.datasetName(), 'sub-' + self.getEntity("subject")]
 
-        subjectName = self.getSubjectID()
-        subjectDir = os.path.join(datasetDir, "sub-" + subjectName)
-        try:
-            os.mkdir(subjectDir)
-        except FileExistsError:
-            pass
-
-        # get session/task info for directories
-        session = self.getSessionName()
+        session = self.getEntity("session")
         if session:
-            session = session.group(0)
-            sessionDir = os.path.join(subjectDir, session)
-            try:
-                os.mkdir(sessionDir)
-            except FileExistsError:
-                pass
+            pathElements.append('ses-' + session)
 
-        task = self.getTaskName()
-        if task:
-            task = task.group(0)
+        pathElements.append(self.dataType())
 
-        if session:
-            funcDir = os.path.join(sessionDir, "func")
-        else:
-            funcDir = os.path.join(subjectDir, "func")
+        dataDirPath = os.path.join(directoryPath, *pathElements)
+        os.makedirs(dataDirPath, exist_ok=True)
 
-        try:
-            os.mkdir(funcDir)
-        except FileExistsError:
-            pass
-
-        # Write out nifti to func folder
-        niftiFilename = os.path.join(funcDir, 'sub-{}'.format(subjectName))
-        if session:
-            niftiFilename += '_' + task
-        print(niftiFilename)
-
-        nib.save(self.image, os.path.join(funcDir, niftiFilename))
+        # Write image to data folder
+        imagePath = os.path.join(dataDirPath, self.imageFileName())
+        nib.save(self.image, imagePath)
 
         # Write out metadata
+        metadataPath = os.path.join(dataDirPath, self.metadataFileName())
+        with open(metadataPath, mode='w') as metadataFile:
+            json.dump(self.imgMetadata, metadataFile)
 
-        # Write out other required files (eg README, dataset description)
+        # TODO: Write out other required files (eg README, dataset description)
+
+    """ END BIDS-I ARCHIVE EMULTATION API """
