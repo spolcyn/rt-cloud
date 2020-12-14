@@ -9,6 +9,7 @@ import pytest
 import numpy as np
 
 from rtCommon.bidsIncremental import BidsIncremental
+from rtCommon.bidsCommon import BidsFileExtension as BidsFileExtension
 from rtCommon.errors import ValidationError
 from rtCommon.imageHandling import convertDicomFileToNifti, readNifti
 from tests.common import test_inputDir, test_dicomFile
@@ -32,10 +33,17 @@ def sampleNiftiImage():
 
 @pytest.fixture
 def requiredMetadataDict():
+    """
+    A sample dictionary that has all required metadata for constructing a
+    BIDS-Incremental
+    """
     return {'subject': '01', 'task': 'aTask', 'suffix': 'bold'}
 
 @pytest.fixture
 def validBidsI(sampleNiftiImage, requiredMetadataDict):
+    """
+    Constructs and returns a known-valid BIDS-Incremental
+    """
     return BidsIncremental(image=sampleNiftiImage,
                            subject=requiredMetadataDict["subject"],
                            task=requiredMetadataDict["task"],
@@ -70,6 +78,7 @@ def testValidConstruction(sampleNiftiImage, requiredMetadataDict):
                               suffix=requiredMetadataDict["suffix"])
     assert bidsInc is not None
 
+# Test that invalid dataset.json fields are rejected and valid ones are accepted
 def testDatasetMetadata(sampleNiftiImage, requiredMetadataDict):
     # Test invalid dataset metadata
     with pytest.raises(ValidationError):
@@ -80,25 +89,30 @@ def testDatasetMetadata(sampleNiftiImage, requiredMetadataDict):
                         datasetMetadata={"random_field": "doesnt work"})
 
     # Test valid dataset metadata
+    dataset_name = "Test dataset"
     bidsInc = BidsIncremental(image=sampleNiftiImage,
                               subject=requiredMetadataDict["subject"],
                               task=requiredMetadataDict["task"],
                               suffix=requiredMetadataDict["suffix"],
-                              datasetMetadata={"Name": "Test dataset",
+                              datasetMetadata={"Name": dataset_name,
                                                "BIDSVersion": "1.0"})
-    assert bidsInc is not None
+    assert bidsInc.getDatasetName() == dataset_name
 
 
 
 # Test that extracting metadata from the BIDS-I using its provided API returns
 # the correct values
-def testMetadataOutput(validBidsI):
+def testMetadataOutput(validBidsI, requiredMetadataDict):
     with pytest.raises(ValueError):
         validBidsI.getEntity("InvalidEntityName")
 
-    # TODO
-
-    pass
+    # Data type - always 'func' currently
+    assert validBidsI.getDataTypeName() == "func"
+    # Entities
+    assert validBidsI.getEntity('subject') == requiredMetadataDict["subject"]
+    assert validBidsI.getEntity('task') == requiredMetadataDict["task"]
+    # Suffix
+    assert validBidsI.getSuffix() == requiredMetadataDict["suffix"]
 
 # Test that the BIDS-I properly parses BIDS fields present in a DICOM
 # ProtocolName header field
@@ -137,8 +151,16 @@ def testQueryNifti(validBidsI):
 
 # Test that constructing BIDS-compatible filenames from internal metadata
 # returns the correct filenames
-def testFilenameConstruction():
-    pass
+def testFilenameConstruction(validBidsI, requiredMetadataDict):
+    baseFilename = "sub-{}_task-{}_{}".format(
+        requiredMetadataDict["subject"],
+        requiredMetadataDict["task"],
+        requiredMetadataDict["suffix"])
+
+    assert baseFilename + ".nii" == \
+        validBidsI.makeBidsFileName(BidsFileExtension.IMAGE)
+    assert baseFilename + ".json" == \
+        validBidsI.makeBidsFileName(BidsFileExtension.METADATA)
 
 # Test that the hypothetical path for the BIDS-I if it were in an archive is
 # correct based on the metadata within it

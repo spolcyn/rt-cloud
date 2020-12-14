@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 class BidsIncremental:
+    # TODO: Rename this to something more useful
     ENTITIES = loadBidsEntities()
 
     """
@@ -158,20 +159,23 @@ class BidsIncremental:
             if result is not None and len(result.groups()) == 1:
                 foundEntities[entityName] = result.group(1)
 
-        logger.debug("Found entities: %s", foundEntities)
         return foundEntities
 
+    # TODO: Add specific getters for commonly used things, like getRun,
+    # getSubject, getTask
     # From the BIDS Spec: "A file name consists of a chain of entities, or
     # key-value pairs, a suffix and an extension."
     # Thus, we provide a set of methods to extract these values from the BIDS-I.
     def getEntity(self, entityName) -> str:
         """
-        Retrieve the entity value for the provided entity name from this BIDS
-        Incremental.
+        Retrieve the entity value for the provided full entity name from this
+        BIDS Incremental. Be sure to use the full name, e.g., 'subject' instead
+        of 'sub'.
 
         Args:
             entityName: The name of the BIDS entity to retrieve a value for.
-                A list of entity names is provided in the BIDS Standard.
+                A list of entity names is provided in the BIDS Standard. For
+                example, use 'Subject' for subject.
 
         Returns:
             The entity value, or None if this BIDS incremental doesn't contain a
