@@ -63,9 +63,17 @@ class BidsIncremental:
                   isinstance(image, nib.Nifti2Image)):
             raise ValidationError("Image must be NIBabel Nifti 1 or 2 image, \
                                    got type %s" % str(type(image)))
-        else:
-            self.image = image
-            self.header = image.header
+        elif not len(image.get_fdata().shape) >= 4:
+            # TODO: Make this check datatype specific after adding anatomical
+            # data support
+            errorMsg = "BIDS-I only supports 4-D NIfTI volumes for \
+                        functional data"
+            logger.error(errorMsg)
+            #raise ValidationError()
+
+        # Sometimes, image shape has trailing 1's; remove them
+        self.image = nib.funcs.squeeze_image(image)
+        self.header = image.header
 
         # Validate and store image metadata
         if subject is None:
@@ -101,10 +109,12 @@ class BidsIncremental:
                 raise ValidationError(errorMsg)
         else:
             datasetMetadata = {}
-            datasetMetadata["Name"] = "BIDS-Incremental Dataset from RT-Cloud"
+            datasetMetadata["Name"] = "bidsi_dataset"
             datasetMetadata["BIDSVersion"] = str(BIDS_VERSION)
 
         self.datasetMetadata = datasetMetadata
+
+        self.readme = "Generated BIDS-Incremental Dataset from RT-Cloud"
 
         # The BIDS-I version for serialization
         self.version = 1
@@ -357,7 +367,8 @@ class BidsIncremental:
         # Build path to the data directory
         # Overall hierarchy:
         # sub-<participant_label>/[/ses-<session_label>]/<data_type>/
-        pathElements = [self.datasetName(), 'sub-' + self.getEntity("subject")]
+        datasetDir = os.path.join(directoryPath, self.datasetName())
+        pathElements = ['sub-' + self.getEntity("subject")]
 
         session = self.getEntity("session")
         if session:
@@ -365,18 +376,31 @@ class BidsIncremental:
 
         pathElements.append(self.dataType())
 
-        dataDirPath = os.path.join(directoryPath, *pathElements)
+        dataDirPath = os.path.join(datasetDir, *pathElements)
         os.makedirs(dataDirPath, exist_ok=True)
 
         # Write image to data folder
         imagePath = os.path.join(dataDirPath, self.imageFileName())
         nib.save(self.image, imagePath)
 
-        # Write out metadata
+        # Write out image metadata
         metadataPath = os.path.join(dataDirPath, self.metadataFileName())
         with open(metadataPath, mode='w') as metadataFile:
+            # BIDS requires TaskName, and EITHER (ReptitionTime, VolumeTiming)
+            # to be defined in the sidecar file
+            # Normally, this should come from the imgMetadata dict passed into
+            # the constructor, which is derived from the source DICOM image
+            self.imgMetadata["TaskName"] = self.getEntity("task")
             json.dump(self.imgMetadata, metadataFile)
+            self.imgMetadata.pop("TaskName", None)
 
-        # TODO: Write out other required files (eg README, dataset description)
+        # Write out dataset description
+        descriptionPath = os.path.join(datasetDir, "dataset_description.json")
+        with open(descriptionPath, mode='w') as description:
+            json.dump(self.datasetMetadata, description)
+
+        # Write out readme
+        with open(os.path.join(datasetDir, "README"), mode='w') as readme:
+            readme.write(self.readme)
 
     """ END BIDS-I ARCHIVE EMULTATION API """

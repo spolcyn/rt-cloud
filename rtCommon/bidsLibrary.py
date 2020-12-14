@@ -391,8 +391,10 @@ def bidsToBidsinc(archive: BidsArchive,
             return None
         return BidsIncremental(image, subject, task, suffix, metadata)
     else:
-        # https://nipy.org/nibabel/images_and_memory.html
-        targetSlice = image.dataobj[..., imageIndex]
-        newImage = nib.Nifti1Image(targetSlice, image.affine, image.header)
-        newImage.update_header()  # update header to reflect new dimensions
+        slices = nib.funcs.four_to_three(image)[imageIndex]
+        if imageIndex < len(slices):
+            newImage = slices[imageIndex]
+        else:
+            logger.error("Image index %d is too large for NIfTI volume of \
+                          length %d", imageIndex, len(slices))
         return BidsIncremental(newImage, subject, task, suffix, metadata)

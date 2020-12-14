@@ -2,9 +2,11 @@ import io
 import logging
 import os
 import pickle
+import shutil
 import tempfile
 import time
 
+from bids_validator import BIDSValidator
 import pytest
 import numpy as np
 
@@ -13,6 +15,8 @@ from rtCommon.bidsCommon import BidsFileExtension as BidsFileExtension
 from rtCommon.errors import ValidationError
 from rtCommon.imageHandling import convertDicomFileToNifti, readNifti
 from tests.common import test_inputDir, test_dicomFile
+
+logger = logging.getLogger(__name__)
 
 @pytest.yield_fixture
 def sampleNiftiImage():
@@ -176,11 +180,15 @@ def testArchivePathConstruction(validBidsI, requiredMetadataDict):
 # Test that writing the BIDS-I to disk returns a properly formatted BIDS archive
 # in the correct location with all the data in the BIDS-I
 def testDiskOutput(validBidsI):
-    directoryPath = "/tmp"
+    directoryPath = tempfile.gettempdir()
     validBidsI.writeToArchive(directoryPath)
-    # TODO: Validate with Pybids
+    datasetPath = os.path.join(directoryPath, validBidsI.datasetName())
 
-    pass
+    errorMsg = "BIDS-I archive output invalid at path: " + datasetPath
+    assert BIDSValidator().is_bids(datasetPath), errorMsg
+
+    # Cleanup temp directory if test succeeded; leave for inspection otherwise
+    shutil.rmtree(datasetPath)
 
 # Test serialization results in equivalent BIDS-I object
 def testSerialization(validBidsI):
