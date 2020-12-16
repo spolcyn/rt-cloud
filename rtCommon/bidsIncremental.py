@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 
 class BidsIncremental:
-    # TODO: Rename this to something more useful
+    # TODO(spolcyn): Rename this to something more useful
     ENTITIES = loadBidsEntities()
 
     """
@@ -64,8 +64,9 @@ class BidsIncremental:
             raise ValidationError("Image must be NIBabel Nifti 1 or 2 image, \
                                    got type %s" % str(type(image)))
         elif not len(image.get_fdata().shape) >= 4:
-            # TODO: Make this check datatype specific after adding anatomical
-            # data support
+            # TODO(spolcyn): Make this check datatype specific after adding
+            # anatomical data support
+            # TODO(spolcyn): Make this check strict
             errorMsg = "BIDS-I only supports 4-D NIfTI volumes for \
                         functional data"
             logger.error(errorMsg)
@@ -111,10 +112,38 @@ class BidsIncremental:
             datasetMetadata = {}
             datasetMetadata["Name"] = "bidsi_dataset"
             datasetMetadata["BIDSVersion"] = str(BIDS_VERSION)
+            if not datasetMetadata.get("Authors"):
+                datasetMetadata["Authors"] = ["The RT-Cloud Authors",
+                                              "The Dataset Author"]
 
         self.datasetMetadata = datasetMetadata
 
+        # Configure additional required BIDS metadata and files
         self.readme = "Generated BIDS-Incremental Dataset from RT-Cloud"
+        self.imgMetadata["TaskName"] = task  # required for BIDS sidecar file
+
+        rtFields = ["RepetitionTime", "EchoTime"]
+        for field in rtFields:
+            value = self.imgMetadata.get(field)
+            if not value:
+                raise ValidationError("Expected {} field in image metadata"
+                                       .format(field))
+            elif field == "RepetitionTime":
+                value = int(value)
+                if value > 100:
+                    logger.info("%s %d > 100. Assuming value is in \
+                                 milliseconds, converting to seconds.",
+                                field,
+                                value)
+                self.imgMetadata[field] = value / 1000.0
+            elif field == "EchoTime":
+                value = int(value)
+                if value > 1:
+                    logger.info("%s %d > 1. Assuming value is in \
+                                 milliseconds, converting to seconds.",
+                                field,
+                                value)
+                self.imgMetadata[field] = value / 1000.0
 
         # The BIDS-I version for serialization
         self.version = 1
@@ -127,8 +156,9 @@ class BidsIncremental:
 
     def __eq__(self, other):
         # Compare images
-        # TODO: Could do this more completely by save()'ing the images to disk,
-        # then diffing the files that they produce
+        # TODO(spolcyn): Could do this more completely by save()'ing the images
+        # to disk, then diffing the files that they produce; however, this could
+        # be quite slow
         if self.image.header != other.image.header:
             return False
         if not np.array_equal(self.image.get_fdata(), other.image.get_fdata()):
@@ -158,7 +188,7 @@ class BidsIncremental:
 
         prefix = "(?:(?<=_)|(?<=^))"  # match beginning of string or underscore
         suffix = "(?:(?=_)|(?=$))"  # match end of string or underscore
-        fieldPat = "(?:{field}-)(.+?)"  # TODO: Document this regex
+        fieldPat = "(?:{field}-)(.+?)"  # TODO(spolcyn): Document this regex
         patternTemplate = prefix + fieldPat + suffix
 
         foundEntities = {}
@@ -172,7 +202,7 @@ class BidsIncremental:
 
         return foundEntities
 
-    # TODO: Add specific getters for commonly used things, like getRun,
+    # TODO(spolcyn): Add specific getters for commonly used things, like getRun,
     # getSubject, getTask
     # From the BIDS Spec: "A file name consists of a chain of entities, or
     # key-value pairs, a suffix and an extension."
@@ -249,7 +279,7 @@ class BidsIncremental:
 
     # Additional methods to access internal BIDS-I data
     def dataType(self):
-        # TODO: Support anatomical imaging too
+        # TODO(spolcyn): Support anatomical imaging too
         """ func or anat """
         return "func"
 
@@ -302,7 +332,10 @@ class BidsIncremental:
         if runName:
             labelPairs.append('run-' + runName)
 
-        labelPairs.append(self.suffix())
+        if extension == BidsFileExtension.EVENTS:
+            labelPairs.append("events")
+        else:
+            labelPairs.append(self.suffix())
 
         """
         # distinguish using diff params for acquiring same task
@@ -331,6 +364,9 @@ class BidsIncremental:
     def metadataFileName(self) -> str:
         return self.makeBidsFileName(BidsFileExtension.METADATA)
 
+    def eventsFileName(self) -> str:
+        return self.makeBidsFileName(BidsFileExtension.EVENTS)
+
     def datasetName(self) -> str:
         return self.datasetMetadata["Name"]
 
@@ -357,8 +393,8 @@ class BidsIncremental:
 
         return os.path.join("/", *pathElements)
 
-    # TODO: Write a BIDS-I to a valid BIDS Archive on disk
-    # TODO: Call BIDS Validator on that BIDS Archive
+    # TODO(spolcyn): Write a BIDS-I to a valid BIDS Archive on disk
+    # TODO(spolcyn): Call BIDS Validator on that BIDS Archive
     def writeToArchive(self, directoryPath: str):
         """
         Args:
@@ -386,13 +422,29 @@ class BidsIncremental:
         # Write out image metadata
         metadataPath = os.path.join(dataDirPath, self.metadataFileName())
         with open(metadataPath, mode='w') as metadataFile:
-            # BIDS requires TaskName, and EITHER (ReptitionTime, VolumeTiming)
-            # to be defined in the sidecar file
-            # Normally, this should come from the imgMetadata dict passed into
-            # the constructor, which is derived from the source DICOM image
-            self.imgMetadata["TaskName"] = self.getEntity("task")
-            json.dump(self.imgMetadata, metadataFile)
-            self.imgMetadata.pop("TaskName", None)
+            # Required fields for BIDS sidecar file
+            # Normally, this metadata is defined in the imgMetadata dictionary
+            # passed on construction and is derived from the source DICOM
+            # TODO(spolcyn): Support volume timing and associated fields
+            # TODO(spolcyn): Write out internally used entities, like "subject", "task",
+            # and "run" in a suitable way (likely not at all, since they're
+            # included in the filename)
+            errorMsg = "Metadata didn't contain {}, required by BIDS"
+            requiredFields = ["TaskName", "RepetitionTime"]
+            for field in requiredFields:
+                if not self.imgMetadata.get(field, None):
+                    raise RuntimeError(errorMsg.format(field))
+
+            # TODO(spolcyn): Remove this after done testing for full bids validation
+            self.imgMetadata["SliceTiming"] = list(np.linspace(0.0, 1.5, 27))
+
+            json.dump(self.imgMetadata, metadataFile, sort_keys=True, indent=4)
+
+        # TODO(spolcyn): Make this events file correspond correctly to the imaging
+        # sequence, not just to fulfill BIDS validation
+        eventsPath = os.path.join(dataDirPath, self.eventsFileName())
+        with open(eventsPath, mode='w') as eventsFile:
+            eventsFile.write('onset\tduration\tresponse_time\n')
 
         # Write out dataset description
         descriptionPath = os.path.join(datasetDir, "dataset_description.json")

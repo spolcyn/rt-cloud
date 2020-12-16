@@ -27,6 +27,7 @@ class BidsFileExtension(Enum):
     IMAGE = '.nii'
     IMAGE_COMPRESSED = '.nii.gz'
     METADATA = '.json'
+    EVENTS = '.tsv'
 
 
 # BIDS Entitiy information dict

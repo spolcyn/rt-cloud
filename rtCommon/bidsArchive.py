@@ -90,7 +90,7 @@ class BidsDataset:
         Updates the layout of the dataset so that any new metadata or image
         files are added to the index.
         """
-        # TODO: Find if there's a more efficient way to update the index
+        # TODO(spolcyn): Find if there's a more efficient way to update the index
         # that doesn't rely on implementation details of the PyBids (ie, the
         # SQLite DB it uses)
         self.data = BIDSLayout(self.data.root)
@@ -147,7 +147,7 @@ class BidsDataset:
 
         """
         # Get all files
-        # TODO: Make more efficient using pybids internal query?
+        # TODO(spolcyn): Make more efficient using pybids internal query?
         files = self.data.get_files()
         matchingFiles = []
         absPath = self.absPathFromRelPath(path)

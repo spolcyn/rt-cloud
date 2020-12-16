@@ -2,6 +2,7 @@ import io
 import logging
 import os
 import pickle
+import re
 import shutil
 import tempfile
 
@@ -36,7 +37,8 @@ def testNullConstruction(sampleNiftiImage, imageMetadataDict, argDict):
                 BidsIncremental(image=sampleNiftiImage,
                                 subject=p["subject"],
                                 task=p["task"],
-                                suffix=p["suffix"])
+                                suffix=p["suffix"],
+                                imgMetadata=imageMetadataDict)
             assert "Image" not in str(excinfo.value)
 
 
@@ -44,7 +46,8 @@ def testValidConstruction(sampleNiftiImage, imageMetadataDict):
     bidsInc = BidsIncremental(image=sampleNiftiImage,
                               subject=imageMetadataDict["subject"],
                               task=imageMetadataDict["task"],
-                              suffix=imageMetadataDict["suffix"])
+                              suffix=imageMetadataDict["suffix"],
+                              imgMetadata=imageMetadataDict)
     assert bidsInc is not None
 
 
@@ -56,7 +59,8 @@ def testDatasetMetadata(sampleNiftiImage, imageMetadataDict):
                         subject=imageMetadataDict["subject"],
                         task=imageMetadataDict["task"],
                         suffix=imageMetadataDict["suffix"],
-                        datasetMetadata={"random_field": "doesnt work"})
+                        datasetMetadata={"random_field": "doesnt work"},
+                        imgMetadata=imageMetadataDict)
 
     # Test valid dataset metadata
     dataset_name = "Test dataset"
@@ -65,7 +69,8 @@ def testDatasetMetadata(sampleNiftiImage, imageMetadataDict):
                               task=imageMetadataDict["task"],
                               suffix=imageMetadataDict["suffix"],
                               datasetMetadata={"Name": dataset_name,
-                                               "BIDSVersion": "1.0"})
+                                               "BIDSVersion": "1.0"},
+                              imgMetadata=imageMetadataDict)
     assert bidsInc.datasetName() == dataset_name
 
 
@@ -158,12 +163,19 @@ def testArchivePathConstruction(validBidsI, imageMetadataDict):
 # Test that writing the BIDS-I to disk returns a properly formatted BIDS archive
 # in the correct location with all the data in the BIDS-I
 def testDiskOutput(validBidsI):
+    # Write the archive
     directoryPath = tempfile.gettempdir()
     validBidsI.writeToArchive(directoryPath)
-    datasetPath = os.path.join(directoryPath, validBidsI.datasetName())
 
-    errorMsg = "BIDS-I archive output invalid at path: " + datasetPath
-    assert BIDSValidator().is_bids(datasetPath), errorMsg
+    # Validate the BIDS-compliance of each path (relative to dataset root) of
+    # every file in the archive
+    datasetPath = os.path.join(directoryPath, validBidsI.datasetName(), "")
+    validator = BIDSValidator()
+    for dirPath, _, filenames in os.walk(datasetPath):
+        for f in filenames:
+            fname = os.path.join(dirPath, f)
+            fname = fname.replace(datasetPath, os.path.sep)
+            assert validator.is_bids(fname)
 
     # Cleanup temp directory if test succeeded; leave for inspection otherwise
     shutil.rmtree(datasetPath)

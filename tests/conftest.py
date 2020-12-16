@@ -6,7 +6,7 @@ import tempfile
 import pydicom
 import pytest
 
-from common import test_dicomFilePath
+from common import test_dicomFilePath, test_niftiFilePath
 from rtCommon.imageHandling import (
     readDicomFromFile,
     convertDicomFileToNifti,
@@ -53,29 +53,21 @@ def dicomImageMetadata(dicomImage):
 
 """ BEGIN BIDS RELATED FIXTURES """
 
-@pytest.yield_fixture
+# 4-D NIfTI image derived from concatting the test DICOM image with itself
+@pytest.fixture
 def sampleNiftiImage():
-    dicomPath = os.path.join(os.path.dirname(__file__), test_dicomFilePath)
-    niftiPath = os.path.join(tempfile.gettempdir(), "test.nii")
-    convertDicomFileToNifti(dicomPath, niftiPath)
-
-    # 'Yield' will return the Nifti image now, and delay the running of
-    # subsequent code (i.e., the removal of the Nifti image on disk) until the
-    # end-of-test tear-down is being done
-    # This ensures the test doesn't create clutter, but is able to access the
-    # necessary data during the test
-    yield readNifti(niftiPath)
-
-    os.remove(niftiPath)
+    return readNifti(test_niftiFilePath)
 
 @pytest.fixture
-def imageMetadataDict():
+def imageMetadataDict(dicomImageMetadata):
     """
     Dictionary with all required metadata to construct a BIDS-Incremental, as
     well as extra metadata extracted from the test DICOM image.
     """
-    return {'subject': '01', 'task': 'story', 'suffix': 'bold',  # REQUIRED
-            'session': '01', 'run': '01'}  # EXTRA
+    meta = {'subject': '01', 'task': 'story', 'suffix': 'bold',  # REQUIRED
+            'session': '01', 'run': '01'}  # EXTRACTED
+    meta.update(dicomImageMetadata)  # DICOM
+    return meta
 
 @pytest.fixture
 def validBidsI(sampleNiftiImage, imageMetadataDict, dicomImageMetadata):
