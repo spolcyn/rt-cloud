@@ -1,4 +1,6 @@
+from copy import deepcopy
 import io
+import json
 import logging
 import os
 import pickle
@@ -7,6 +9,7 @@ import tempfile
 
 from bids_validator import BIDSValidator
 import pytest
+import nibabel as nib
 import numpy as np
 
 from rtCommon.bidsIncremental import BidsIncremental
@@ -17,10 +20,15 @@ logger = logging.getLogger(__name__)
 
 
 # Test that construction fails for image metadata missing required fields
-def testInvalidConstruction(sampleNiftiImage, imageMetadataDict):
+def testInvalidConstruction(sample2DNifti, sampleNifti1, imageMetadataDict):
     # Test empty image
     with pytest.raises(ValidationError):
         BidsIncremental(image=None,
+                        imageMetadata=imageMetadataDict)
+
+    # Test 2-D image
+    with pytest.raises(ValidationError):
+        BidsIncremental(image=sample2DNifti,
                         imageMetadata=imageMetadataDict)
 
     # Test incomplete metadata
@@ -31,31 +39,83 @@ def testInvalidConstruction(sampleNiftiImage, imageMetadataDict):
 
         assert not BidsIncremental.isCompleteImageMetadata(imageMetadataDict)
         with pytest.raises(ValidationError):
-            BidsIncremental(image=sampleNiftiImage,
+            BidsIncremental(image=sampleNifti1,
                             imageMetadata=imageMetadataDict)
 
         imageMetadataDict[key] = value
     imageMetadataDict["ProtocolName"] = protocolName
 
+    # Test non-image object
+    with pytest.raises(ValidationError):
+        BidsIncremental(image="definitely not an image",
+                        imageMetadata=imageMetadataDict)
+
 
 # Test that valid arguments produce a BIDS incremental
-def testValidConstruction(sampleNiftiImage, imageMetadataDict):
-    bidsInc = BidsIncremental(image=sampleNiftiImage,
-                              imageMetadata=imageMetadataDict)
-    assert bidsInc is not None
+def testValidConstruction(sample3DNifti, sampleNifti1, sampleNifti2, imageMetadataDict):
+    # 3-D should be promoted to 4-D
+    assert BidsIncremental(sample3DNifti, imageMetadataDict) is not None
+    assert BidsIncremental(sampleNifti1, imageMetadataDict) is not None
+    assert BidsIncremental(sampleNifti2, imageMetadataDict) is not None
 
+# Test that the string output of the BIDS-I is as expected
+def testStringOutput(validBidsI):
+    imageShape = str(validBidsI.imageDimensions())
+    keyCount = len(validBidsI.imgMetadata.keys())
+    version = validBidsI.version
+    assert str(validBidsI) == f"Image shape: {imageShape}; " \
+                             f"# Metadata Keys: {keyCount}; " \
+                             f"Version: {version}"
+
+# Test that equality comparison is as expected
+def testEquals(sampleNifti1, sample3DNifti, imageMetadataDict):
+    # Test images with different headers
+    assert BidsIncremental(sampleNifti1, imageMetadataDict) != \
+           BidsIncremental(sample3DNifti, imageMetadataDict)
+
+    # Test images with the same header, but different data
+    newData = 1.1 * sampleNifti1.get_fdata()
+    reversedNifti1 = nib.Nifti1Image(newData, sampleNifti1.affine,
+                                     header=sampleNifti1.header)
+    assert BidsIncremental(sampleNifti1, imageMetadataDict) != \
+        BidsIncremental(reversedNifti1, imageMetadataDict)
+
+    # Test different image metadata
+    modifiedImageMetadata = deepcopy(imageMetadataDict)
+    modifiedImageMetadata["subject"] = "newSubject"
+    assert BidsIncremental(sampleNifti1, imageMetadataDict) != \
+           BidsIncremental(sampleNifti1, modifiedImageMetadata)
+
+    # Test different dataset metadata
+    datasetMeta1 = {"Name": "Dataset_1", "BIDSVersion": "1.0"}
+    datasetMeta2 = {"Name": "Dataset_2", "BIDSVersion": "2.0"}
+    assert BidsIncremental(sampleNifti1, imageMetadataDict, datasetMeta1) != \
+           BidsIncremental(sampleNifti1, imageMetadataDict, datasetMeta2)
+
+# Test that image metadata dictionaries can be properly created by the class
+def testImageMetadataDictCreation(imageMetadataDict):
+    logger.debug("Subject: %s", imageMetadataDict["subject"])
+    createdDict = BidsIncremental.createImageMetadataDict(
+                    subject=imageMetadataDict["subject"],
+                    task=imageMetadataDict["task"],
+                    suffix=imageMetadataDict["suffix"],
+                    repetitionTime=imageMetadataDict["RepetitionTime"],
+                    echoTime=imageMetadataDict["EchoTime"])
+
+    for key in createdDict.keys():
+        assert createdDict.get(key) == imageMetadataDict.get(key)
 
 # Test that invalid dataset.json fields are rejected and valid ones are accepted
-def testDatasetMetadata(sampleNiftiImage, imageMetadataDict):
+def testDatasetMetadata(sampleNifti1, imageMetadataDict):
     # Test invalid dataset metadata
     with pytest.raises(ValidationError):
-        BidsIncremental(image=sampleNiftiImage,
+        BidsIncremental(image=sampleNifti1,
                         imageMetadata=imageMetadataDict,
                         datasetMetadata={"random_field": "doesnt work"})
 
     # Test valid dataset metadata
     dataset_name = "Test dataset"
-    bidsInc = BidsIncremental(image=sampleNiftiImage,
+    bidsInc = BidsIncremental(image=sampleNifti1,
                               imageMetadata=imageMetadataDict,
                               datasetMetadata={"Name": dataset_name,
                                                "BIDSVersion": "1.0"})
@@ -80,6 +140,12 @@ def testMetadataOutput(validBidsI, imageMetadataDict):
 # Test that the BIDS-I properly parses BIDS fields present in a DICOM
 # ProtocolName header field
 def testParseProtocolName():
+    # ensure nothing spurious is found in strings without BIDS fields
+    assert BidsIncremental.metadataFromProtocolName("") == {}
+    assert BidsIncremental.metadataFromProtocolName("this ain't bids") == {}
+    assert BidsIncremental.metadataFromProtocolName("nor_is_this") == {}
+    assert BidsIncremental.metadataFromProtocolName("still-aint_it") == {}
+
     protocolName = "func_ses-01_task-story_run-01"
     expectedValues = {'session': '01', 'task': 'story', 'run': '01'}
 
@@ -87,6 +153,37 @@ def testParseProtocolName():
 
     for key, expectedValue in expectedValues.items():
         assert parsedValues[key] == expectedValue
+
+
+# Test adding BIDS-I entities API works as expected
+def testAddEntity(validBidsI):
+    with pytest.raises(ValueError):
+        validBidsI.addEntity("nonentity", "value")
+
+    entityName = "acquisition"
+    newValue = "newValue"
+    originalValue = validBidsI.getEntity(entityName)
+
+    validBidsI.addEntity(entityName, newValue)
+    assert validBidsI.getEntity(entityName) == newValue
+
+    validBidsI.addEntity(entityName, originalValue)
+    assert validBidsI.getEntity(entityName) == originalValue
+
+
+# Test removing BIDS-I entities API works as expected
+def testRemoveEntity(validBidsI):
+    with pytest.raises(ValueError):
+        validBidsI.removeEntity("nonentity")
+
+    entityName = "acquisition"
+    originalValue = validBidsI.getEntity(entityName)
+
+    validBidsI.removeEntity(entityName)
+    assert validBidsI.getEntity(entityName) is None
+
+    validBidsI.addEntity(entityName, originalValue)
+    assert validBidsI.getEntity(entityName) == originalValue
 
 
 # Test that the BIDS-I interface methods for extracting internal NIfTI data

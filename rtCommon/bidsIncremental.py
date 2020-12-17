@@ -6,6 +6,7 @@ Implements the BIDS Incremental data type used for streaming BIDS data between
 different applications.
 
 -----------------------------------------------------------------------------"""
+from copy import deepcopy
 import json
 import os
 import re
@@ -58,36 +59,37 @@ class BidsIncremental:
         """
 
         """ Validate and store image """
-        if image is None:
-            raise ValidationError("Image cannot be None")
-        elif not (isinstance(image, nib.Nifti1Image) or
-                  isinstance(image, nib.Nifti2Image)):
-            raise ValidationError("Image must be NIBabel Nifti 1 or 2 image, \
-                                   got type %s" % str(type(image)))
-        elif not len(image.get_fdata().shape) >= 4:
-            # TODO(spolcyn): Make this check datatype specific after adding
-            # anatomical data support
-            # TODO(spolcyn): Make this check strict
-            errorMsg = "BIDS-I only supports 4-D NIfTI volumes for \
-                        functional data"
-            logger.error(errorMsg)
-            # raise ValidationError()
+        if  image is None or \
+            (not isinstance(image, nib.Nifti1Image) and
+             not isinstance(image, nib.Nifti2Image)):
+            raise ValidationError("Image must be NIBabel Nifti 1 or 2 image, "
+                                  "got type %s" % str(type(image)))
 
-        # Sometimes, image shape has trailing 1's; remove them
+        # Remove singleton dimensions
         self.image = nib.funcs.squeeze_image(image)
-        self.header = image.header
+
+        # Validate dimensions
+        imageShape = image.get_fdata().shape
+        logger.debug("IMage shape: %s", str(imageShape))
+        if len(imageShape) < 3:
+            raise ValidationError("Image must have at least 3 dimensions")
+        elif len(imageShape) == 3:
+            # Add one singleton dimension to make image 4-D
+            newData = np.expand_dims(image.get_fdata(), -1)
 
         """ Validate and store image metadata """
-        protocolName = imageMetadata.get("ProtocolName", None)
-        if protocolName is not None:
-            imageMetadata.update(self.metadataFromProtocolName(protocolName))
+        # Ensure BIDS-I has an independent metadata dictionary
+        self.imgMetadata = deepcopy(imageMetadata)
 
-        missingImageMetadata = self.missingImageMetadataFields(imageMetadata)
+        protocolName = self.imgMetadata.get("ProtocolName", None)
+        if protocolName is not None:
+            self.imgMetadata.update(self.metadataFromProtocolName(protocolName))
+
+        missingImageMetadata = self.missingImageMetadataFields(self.imgMetadata)
         if missingImageMetadata != []:
             raise ValidationError("Image metadata missing required fields: %s" %
                                    str(missingImageMetadata))
 
-        self.imgMetadata = imageMetadata
         self.imgMetadata["TaskName"] = self.imgMetadata["task"]
 
         # Validate dataset metadata or create default values
@@ -96,19 +98,16 @@ class BidsIncremental:
                              field in DATASET_DESC_REQ_FIELDS
                              if datasetMetadata.get(field) is None]
 
-            if missingFields != []:
-                errorMsg = "Dataset description provided, but missing these \
-                        required fields: " + str(missingFields)
-                raise ValidationError(errorMsg)
+            if missingFields == []:
+                self.datasetMetadata = deepcopy(datasetMetadata)
+            else:
+                raise ValidationError("Dataset description missing these "
+                                      "required fields: " + str(missingFields))
         else:
-            datasetMetadata = {}
-            datasetMetadata["Name"] = "bidsi_dataset"
-            datasetMetadata["BIDSVersion"] = str(BIDS_VERSION)
-            if not datasetMetadata.get("Authors"):
-                datasetMetadata["Authors"] = ["The RT-Cloud Authors",
-                                              "The Dataset Author"]
-
-        self.datasetMetadata = datasetMetadata
+            self.datasetMetadata = {"Name": "bidsi_dataset",
+                                    "BIDSVersion": str(BIDS_VERSION),
+                                    "Authors": ["The RT-Cloud Authors",
+                                                "The Dataset Author"]}
 
         # Configure additional required BIDS metadata and files
         self.readme = "Generated BIDS-Incremental Dataset from RT-Cloud"
@@ -141,7 +140,7 @@ class BidsIncremental:
 
     def __str__(self):
         return "Image shape: {}; # Metadata Keys: {}; Version: {}".format(
-            self.image.get_fdata().shape,
+            self.imageDimensions(),
             len(self.imgMetadata.keys()),
             self.version)
 
@@ -165,7 +164,7 @@ class BidsIncremental:
 
         return True
 
-    @classmethod
+    @staticmethod
     def createImageMetadataDict(subject: str, task: str, suffix: str,
                                 repetitionTime: int, echoTime: int):
         """
@@ -183,12 +182,8 @@ class BidsIncremental:
             Dictionary with the provided information ready for use in a BIDS-I
 
         """
-        metadata = {}
-        metadata["subject"] = subject
-        metadata["task"] = task
-        metadata["suffix"] = suffix
-        metadata["RepetitionTime"] = repetitionTime
-        metadata["EchoTime"] = echoTime
+        return {"subject": subject, "task": task, "suffix": suffix,
+                "RepetitionTime": repetitionTime, "EchoTime": echoTime}
 
     @classmethod
     def missingImageMetadataFields(cls, imageMeta: dict) -> list:
@@ -219,7 +214,7 @@ class BidsIncremental:
         Returns:
             A dictionary containing any valid label-value combinations found.
         """
-        if protocolName is None:
+        if not protocolName:
             return {}
 
         prefix = "(?:(?<=_)|(?<=^))"  # match beginning of string or underscore
@@ -327,7 +322,7 @@ class BidsIncremental:
         return self.image.header
 
     def imageDimensions(self) -> np.ndarray:
-        return self.image.get("dim")
+        return self.image.header.get("dim")
 
     """
     BEGIN BIDS-I ARCHIVE EMULTATION API

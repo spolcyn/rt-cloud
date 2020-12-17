@@ -3,10 +3,16 @@
 import os
 import tempfile
 
+import nibabel as nib
 import pydicom
 import pytest
 
-from common import test_dicomFilePath, test_niftiFilePath
+from common import (
+    test_dicomPath,
+    test_3DNiftiPath,
+    test_nifti1Path,
+    test_nifti2Path
+)
 from rtCommon.imageHandling import (
     readDicomFromFile,
     convertDicomFileToNifti,
@@ -34,7 +40,7 @@ def dicomMetadataSample() -> dict:
 @pytest.fixture
 def dicomImage(dicomMetadataSample) -> pydicom.dataset.Dataset:
     dicom = readDicomFromFile(os.path.join(os.path.dirname(__file__),
-                                           test_dicomFilePath))
+                                           test_dicomPath))
     assert dicom is not None
 
     # Test a sampling of fields to ensure proper read
@@ -53,10 +59,30 @@ def dicomImageMetadata(dicomImage):
 
 """ BEGIN BIDS RELATED FIXTURES """
 
-# 4-D NIfTI image derived from concatting the test DICOM image with itself
+# 2-D NIfTI 1 image corrupted from the test DICOM image
 @pytest.fixture
-def sampleNiftiImage():
-    return readNifti(test_niftiFilePath)
+def sample2DNifti():
+    nifti = readNifti(test_3DNiftiPath)
+    newData = nifti.get_fdata().flatten()
+    # max positive value of 2 byte, signed short used in Nifti header for
+    # storing dimension information
+    newData = newData[:2**15 - 1]
+    return nib.Nifti1Image(newData, nifti.affine)
+
+# 3-D NIfTI 1 image derived from the test DICOM image
+@pytest.fixture
+def sample3DNifti():
+    return readNifti(test_3DNiftiPath)
+
+# 4-D NIfTI 1 image derived from concatting the test DICOM image with itself
+@pytest.fixture
+def sampleNifti1():
+    return readNifti(test_nifti1Path)
+
+# 4-D NIfTI 2 image derived from concatting the test DICOM image with itself
+@pytest.fixture
+def sampleNifti2():
+    return readNifti(test_nifti2Path)
 
 @pytest.fixture
 def imageMetadataDict(dicomImageMetadata):
@@ -70,11 +96,11 @@ def imageMetadataDict(dicomImageMetadata):
     return meta
 
 @pytest.fixture
-def validBidsI(sampleNiftiImage, imageMetadataDict):
+def validBidsI(sampleNifti1, imageMetadataDict):
     """
     Constructs and returns a known-valid BIDS-Incremental using known metadata.
     """
-    return BidsIncremental(image=sampleNiftiImage,
+    return BidsIncremental(image=sampleNifti1,
                            imageMetadata=imageMetadataDict)
 
 """ END BIDS RELATED FIXTURES """
