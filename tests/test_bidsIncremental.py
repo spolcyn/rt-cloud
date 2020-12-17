@@ -45,6 +45,17 @@ def testInvalidConstruction(sample2DNifti, sampleNifti1, imageMetadataDict):
         imageMetadataDict[key] = value
     imageMetadataDict["ProtocolName"] = protocolName
 
+    # Test too-large repetition and echo times
+    for key in ["RepetitionTime", "EchoTime"]:
+        original = imageMetadataDict[key]
+        imageMetadataDict[key] = 10**6
+
+        with pytest.raises(ValidationError):
+            BidsIncremental(image=sampleNifti1,
+                            imageMetadata=imageMetadataDict)
+
+        imageMetadataDict[key] = original
+
     # Test non-image object
     with pytest.raises(ValidationError):
         BidsIncremental(image="definitely not an image",
@@ -55,8 +66,18 @@ def testInvalidConstruction(sample2DNifti, sampleNifti1, imageMetadataDict):
 def testValidConstruction(sample3DNifti, sampleNifti1, sampleNifti2, imageMetadataDict):
     # 3-D should be promoted to 4-D
     assert BidsIncremental(sample3DNifti, imageMetadataDict) is not None
+
+    # Both Nifti1 and Nifti2 images should work
     assert BidsIncremental(sampleNifti1, imageMetadataDict) is not None
     assert BidsIncremental(sampleNifti2, imageMetadataDict) is not None
+
+    # If the metadata provides a RepetitionTime or EchoTime that works without
+    # adjustment, the construction should still work
+    repetitionTimeKey= "RepetitionTime"
+    original = imageMetadataDict[repetitionTimeKey]
+    imageMetadataDict[repetitionTimeKey] = 1.5
+    assert BidsIncremental(sampleNifti1, imageMetadataDict) is not None
+    imageMetadataDict[repetitionTimeKey] = original
 
 # Test that the string output of the BIDS-I is as expected
 def testStringOutput(validBidsI):

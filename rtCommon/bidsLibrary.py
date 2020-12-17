@@ -238,7 +238,7 @@ def appendBidsinc(incremental: BidsIncremental,
     """
     # 1) Create target path for image in archive
     imgDirPath = incremental.makeDataDirPath()
-    imgPath = os.path.join(imgDirPath, incremental.getImageFileName())
+    imgPath = incremental.imageFilePath()
     metadataPath = os.path.join(imgDirPath, incremental.getMetadataFileName())
 
     # 2) Verify we have a valid way to append the image to the archive. 3 cases:

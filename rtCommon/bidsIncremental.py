@@ -90,9 +90,24 @@ class BidsIncremental:
             raise ValidationError("Image metadata missing required fields: %s" %
                                    str(missingImageMetadata))
 
+        # Validate or modify fields that are now known to exist
         self.imgMetadata["TaskName"] = self.imgMetadata["task"]
+        fieldToMaxValue = {"RepetitionTime": 100, "EchoTime": 1}
+        for field, maxValue in fieldToMaxValue.items():
+            value = int(self.imgMetadata[field])
+            if value <= maxValue:
+                continue
+            elif value / 1000.0 <= maxValue:
+                logger.info(f"{field} has value {value} > {maxValue}. Assuming "
+                             "value is in milliseconds, converting to seconds.")
+                value = value / 1000.0
+                self.imgMetadata[field] = value
+            else:
+                raise ValidationError(f"{field} has value {value}, which is "
+                                      f"greater than {maxValue} even if "
+                                       "interpreted as milliseconds.")
 
-        # Validate dataset metadata or create default values
+        """ Validate dataset metadata or create default values """
         if datasetMetadata is not None:
             missingFields = [field for
                              field in DATASET_DESC_REQ_FIELDS
@@ -112,28 +127,6 @@ class BidsIncremental:
         # Configure additional required BIDS metadata and files
         self.readme = "Generated BIDS-Incremental Dataset from RT-Cloud"
 
-        rtFields = ["RepetitionTime", "EchoTime"]
-        for field in rtFields:
-            value = self.imgMetadata.get(field)
-            if not value:
-                raise ValidationError("Expected {} field in image metadata"
-                                      .format(field))
-            elif field == "RepetitionTime":
-                value = int(value)
-                if value > 100:
-                    logger.info("%s %d > 100. Assuming value is in \
-                                 milliseconds, converting to seconds.",
-                                field,
-                                value)
-                self.imgMetadata[field] = value / 1000.0
-            elif field == "EchoTime":
-                value = int(value)
-                if value > 1:
-                    logger.info("%s %d > 1. Assuming value is in \
-                                 milliseconds, converting to seconds.",
-                                field,
-                                value)
-                self.imgMetadata[field] = value / 1000.0
 
         # The BIDS-I version for serialization
         self.version = 1
@@ -301,13 +294,6 @@ class BidsIncremental:
     def suffix(self) -> str:
         return self.imgMetadata.get("suffix")
 
-    # A BIDS-I produces two files, with different extensions
-    def imageExtension(self) -> str:
-        return BidsFileExtension.IMAGE
-
-    def metadataExtension(self) -> str:
-        return BidsFileExtension.METADATA
-
     # Additional methods to access internal BIDS-I data
     def dataType(self):
         # TODO(spolcyn): Support anatomical imaging too
@@ -390,9 +376,8 @@ class BidsIncremental:
     def datasetName(self) -> str:
         return self.datasetMetadata["Name"]
 
-    def makeImageFilePath(self) -> str:
-        dataDir = self.makeDataDirPath()
-        return os.path.join(dataDir, self.imageFileName())
+    def imageFilePath(self) -> str:
+        return os.path.join(self.makeDataDirPath(), self.imageFileName())
 
     def dataDirPath(self) -> str:
         """
@@ -427,7 +412,6 @@ class BidsIncremental:
         # Build path to the data directory
         # Overall hierarchy:
         # sub-<participant_label>/[/ses-<session_label>]/<data_type>/
-        datasetDir = os.path.join(directoryPath, self.datasetName())
         pathElements = ['sub-' + self.getEntity("subject")]
 
         session = self.getEntity("session")
@@ -436,6 +420,7 @@ class BidsIncremental:
 
         pathElements.append(self.dataType())
 
+        datasetDir = os.path.join(directoryPath, self.datasetName())
         dataDirPath = os.path.join(datasetDir, *pathElements)
         os.makedirs(dataDirPath, exist_ok=True)
 
@@ -446,20 +431,11 @@ class BidsIncremental:
         # Write out image metadata
         metadataPath = os.path.join(dataDirPath, self.metadataFileName())
         with open(metadataPath, mode='w') as metadataFile:
-            # Required fields for BIDS sidecar file
-            # Normally, this metadata is defined in the imgMetadata dictionary
-            # passed on construction and is derived from the source DICOM
-            # TODO(spolcyn): Support volume timing and associated fields
             # TODO(spolcyn): Write out internally used entities, like "subject",
             # "task", and "run" in a suitable way (likely not at all, since
             # they're included in the filename)
-            errorMsg = "Metadata didn't contain {}, required by BIDS"
-            requiredFields = ["TaskName", "RepetitionTime"]
-            for field in requiredFields:
-                if not self.imgMetadata.get(field, None):
-                    raise RuntimeError(errorMsg.format(field))
-
             # TODO(spolcyn): Remove after done testing for full bids validation
+            # TODO(spolcyn): Support volume timing and associated fields
             self.imgMetadata["SliceTiming"] = list(np.linspace(0.0, 1.5, 27))
 
             json.dump(self.imgMetadata, metadataFile, sort_keys=True, indent=4)
