@@ -29,16 +29,15 @@ logger = logging.getLogger(__name__)
 class BidsIncremental:
     # TODO(spolcyn): Rename this to something more useful
     ENTITIES = loadBidsEntities()
+    requiredImageMetadata = ["subject", "task", "suffix",
+                             "RepetitionTime", "EchoTime"]
 
     """
     BIDS Incremental data format suitable for streaming BIDS Archives
     """
     def __init__(self,
                  image: nib.Nifti1Image,
-                 subject: str,
-                 task: str,
-                 suffix: str,
-                 imgMetadata: dict = None,
+                 imageMetadata: dict,
                  datasetMetadata: dict = None):
         """
         Initializes a BIDS Incremental object with provided image and metadata.
@@ -57,6 +56,8 @@ class BidsIncremental:
             ValidationError: If any required argument is None.
 
         """
+
+        """ Validate and store image """
         if image is None:
             raise ValidationError("Image cannot be None")
         elif not (isinstance(image, nib.Nifti1Image) or
@@ -70,33 +71,24 @@ class BidsIncremental:
             errorMsg = "BIDS-I only supports 4-D NIfTI volumes for \
                         functional data"
             logger.error(errorMsg)
-            #raise ValidationError()
+            # raise ValidationError()
 
         # Sometimes, image shape has trailing 1's; remove them
         self.image = nib.funcs.squeeze_image(image)
         self.header = image.header
 
-        # Validate and store image metadata
-        if subject is None:
-            raise ValidationError("Subject cannot be none")
-        if task is None:
-            raise ValidationError("Task cannot be none")
-        if suffix is None:
-            raise ValidationError("Suffix cannot be none")
-
-        if imgMetadata is None:
-            self.imgMetadata = {}
-        else:
-            self.imgMetadata = imgMetadata
-
-        self.imgMetadata["subject"] = subject
-        self.imgMetadata["task"] = task
-        self.imgMetadata["suffix"] = suffix
-
-        protocolName = self.imgMetadata.get("ProtocolName")
+        """ Validate and store image metadata """
+        protocolName = imageMetadata.get("ProtocolName", None)
         if protocolName is not None:
-            self.imgMetadata.update(
-                self.parseBidsFieldsFromProtocolName(protocolName))
+            imageMetadata.update(self.metadataFromProtocolName(protocolName))
+
+        missingImageMetadata = self.missingImageMetadataFields(imageMetadata)
+        if missingImageMetadata != []:
+            raise ValidationError("Image metadata missing required fields: %s" %
+                                   str(missingImageMetadata))
+
+        self.imgMetadata = imageMetadata
+        self.imgMetadata["TaskName"] = self.imgMetadata["task"]
 
         # Validate dataset metadata or create default values
         if datasetMetadata is not None:
@@ -120,14 +112,13 @@ class BidsIncremental:
 
         # Configure additional required BIDS metadata and files
         self.readme = "Generated BIDS-Incremental Dataset from RT-Cloud"
-        self.imgMetadata["TaskName"] = task  # required for BIDS sidecar file
 
         rtFields = ["RepetitionTime", "EchoTime"]
         for field in rtFields:
             value = self.imgMetadata.get(field)
             if not value:
                 raise ValidationError("Expected {} field in image metadata"
-                                       .format(field))
+                                      .format(field))
             elif field == "RepetitionTime":
                 value = int(value)
                 if value > 100:
@@ -175,7 +166,52 @@ class BidsIncremental:
         return True
 
     @classmethod
-    def parseBidsFieldsFromProtocolName(cls, protocolName: str) -> dict:
+    def createImageMetadataDict(subject: str, task: str, suffix: str,
+                                repetitionTime: int, echoTime: int):
+        """
+        Creates an image metadata dictionary for a BIDS-I with all of the
+        basic required fields using the correct key names.
+
+        Args:
+            subject: Subject ID (e.g., '01')
+            task: Task ID (e.g., 'story')
+            suffix: Data type (e.g., 'bold')
+            repetitionTime: TR time, in seconds, used for the imaging run
+            echoTime: Echo time, in seconds, used for the imaging run
+
+        Returns:
+            Dictionary with the provided information ready for use in a BIDS-I
+
+        """
+        metadata = {}
+        metadata["subject"] = subject
+        metadata["task"] = task
+        metadata["suffix"] = suffix
+        metadata["RepetitionTime"] = repetitionTime
+        metadata["EchoTime"] = echoTime
+
+    @classmethod
+    def missingImageMetadataFields(cls, imageMeta: dict) -> list:
+        return [f for f in cls.requiredImageMetadata if f not in imageMeta]
+
+    @classmethod
+    def isCompleteImageMetadata(cls, imageMeta: dict) -> bool:
+        """
+        Verifies that all required metadata fields for BIDS-I construction are
+        present in the dictionary.
+
+        Args:
+            imageMeta: The dictionary with the metadata fields
+
+        Returns:
+            True if all required fields are present in the dictionary, False
+            otherwise.
+
+        """
+        return len(cls.missingImageMetadataFields(imageMeta)) == 0
+
+    @classmethod
+    def metadataFromProtocolName(cls, protocolName: str) -> dict:
         """
         Extracts BIDS label-value combinations from a DICOM protocol name, if
         any are present.
@@ -426,21 +462,21 @@ class BidsIncremental:
             # Normally, this metadata is defined in the imgMetadata dictionary
             # passed on construction and is derived from the source DICOM
             # TODO(spolcyn): Support volume timing and associated fields
-            # TODO(spolcyn): Write out internally used entities, like "subject", "task",
-            # and "run" in a suitable way (likely not at all, since they're
-            # included in the filename)
+            # TODO(spolcyn): Write out internally used entities, like "subject",
+            # "task", and "run" in a suitable way (likely not at all, since
+            # they're included in the filename)
             errorMsg = "Metadata didn't contain {}, required by BIDS"
             requiredFields = ["TaskName", "RepetitionTime"]
             for field in requiredFields:
                 if not self.imgMetadata.get(field, None):
                     raise RuntimeError(errorMsg.format(field))
 
-            # TODO(spolcyn): Remove this after done testing for full bids validation
+            # TODO(spolcyn): Remove after done testing for full bids validation
             self.imgMetadata["SliceTiming"] = list(np.linspace(0.0, 1.5, 27))
 
             json.dump(self.imgMetadata, metadataFile, sort_keys=True, indent=4)
 
-        # TODO(spolcyn): Make this events file correspond correctly to the imaging
+        # TODO(spolcyn): Make events file correspond correctly to the imaging
         # sequence, not just to fulfill BIDS validation
         eventsPath = os.path.join(dataDirPath, self.eventsFileName())
         with open(eventsPath, mode='w') as eventsFile:

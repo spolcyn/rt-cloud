@@ -2,7 +2,6 @@ import io
 import logging
 import os
 import pickle
-import re
 import shutil
 import tempfile
 
@@ -22,32 +21,49 @@ nonePermutations = [{"subject": None, "task": None, "suffix": None},
                     {"subject": "test", "task": "test", "suffix": None}]
 
 
+# Test that construction fails for image metadata missing required fields
+def testInvalidConstruction(sampleNiftiImage, imageMetadataDict):
+    # Test empty image
+    with pytest.raises(ValidationError):
+        BidsIncremental(image=None,
+                        imageMetadata=imageMetadataDict)
+
+    # Test incomplete metadata
+    protocolName = imageMetadataDict.pop("ProtocolName")
+    for key in BidsIncremental.requiredImageMetadata:
+        logger.debug("Key: %s", key)
+        value = imageMetadataDict.pop(key)
+
+        assert not BidsIncremental.isCompleteImageMetadata(imageMetadataDict)
+        with pytest.raises(ValidationError):
+            BidsIncremental(image=sampleNiftiImage,
+                            imageMetadata=imageMetadataDict)
+
+        imageMetadataDict[key] = value
+    imageMetadataDict["ProtocolName"] = protocolName
+
+
+"""
 @pytest.mark.parametrize("argDict", nonePermutations)
 def testNullConstruction(sampleNiftiImage, imageMetadataDict, argDict):
     # Test empty image
     with pytest.raises(ValidationError):
         BidsIncremental(image=None,
-                        subject=imageMetadataDict["subject"],
-                        task=imageMetadataDict["task"],
-                        suffix=imageMetadataDict["suffix"])
+                        imageMetadata=imageMetadataDict)
 
         # Test empty required fields
         for p in nonePermutations:
             with pytest.raises(ValidationError) as excinfo:
                 BidsIncremental(image=sampleNiftiImage,
-                                subject=p["subject"],
-                                task=p["task"],
-                                suffix=p["suffix"],
-                                imgMetadata=imageMetadataDict)
+                                imgageMetadata=imageMetadataDict)
             assert "Image" not in str(excinfo.value)
+"""
 
 
+# Test that valid arguments produce a BIDS incremental
 def testValidConstruction(sampleNiftiImage, imageMetadataDict):
     bidsInc = BidsIncremental(image=sampleNiftiImage,
-                              subject=imageMetadataDict["subject"],
-                              task=imageMetadataDict["task"],
-                              suffix=imageMetadataDict["suffix"],
-                              imgMetadata=imageMetadataDict)
+                              imageMetadata=imageMetadataDict)
     assert bidsInc is not None
 
 
@@ -56,21 +72,15 @@ def testDatasetMetadata(sampleNiftiImage, imageMetadataDict):
     # Test invalid dataset metadata
     with pytest.raises(ValidationError):
         BidsIncremental(image=sampleNiftiImage,
-                        subject=imageMetadataDict["subject"],
-                        task=imageMetadataDict["task"],
-                        suffix=imageMetadataDict["suffix"],
-                        datasetMetadata={"random_field": "doesnt work"},
-                        imgMetadata=imageMetadataDict)
+                        imageMetadata=imageMetadataDict,
+                        datasetMetadata={"random_field": "doesnt work"})
 
     # Test valid dataset metadata
     dataset_name = "Test dataset"
     bidsInc = BidsIncremental(image=sampleNiftiImage,
-                              subject=imageMetadataDict["subject"],
-                              task=imageMetadataDict["task"],
-                              suffix=imageMetadataDict["suffix"],
+                              imageMetadata=imageMetadataDict,
                               datasetMetadata={"Name": dataset_name,
-                                               "BIDSVersion": "1.0"},
-                              imgMetadata=imageMetadataDict)
+                                               "BIDSVersion": "1.0"})
     assert bidsInc.datasetName() == dataset_name
 
 
@@ -95,7 +105,7 @@ def testParseProtocolName():
     protocolName = "func_ses-01_task-story_run-01"
     expectedValues = {'session': '01', 'task': 'story', 'run': '01'}
 
-    parsedValues = BidsIncremental.parseBidsFieldsFromProtocolName(protocolName)
+    parsedValues = BidsIncremental.metadataFromProtocolName(protocolName)
 
     for key, expectedValue in expectedValues.items():
         assert parsedValues[key] == expectedValue

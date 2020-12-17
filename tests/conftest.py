@@ -70,14 +70,11 @@ def imageMetadataDict(dicomImageMetadata):
     return meta
 
 @pytest.fixture
-def validBidsI(sampleNiftiImage, imageMetadataDict, dicomImageMetadata):
+def validBidsI(sampleNiftiImage, imageMetadataDict):
     """
     Constructs and returns a known-valid BIDS-Incremental using known metadata.
     """
     return BidsIncremental(image=sampleNiftiImage,
-                           subject=imageMetadataDict["subject"],
-                           task=imageMetadataDict["task"],
-                           suffix=imageMetadataDict["suffix"],
-                           imgMetadata=dicomImageMetadata)
+                           imageMetadata=imageMetadataDict)
 
 """ END BIDS RELATED FIXTURES """
