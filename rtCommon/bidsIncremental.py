@@ -229,7 +229,7 @@ class BidsIncremental:
 
         foundEntities = {}
         for entityName, entityValueDict in cls.ENTITIES.items():
-            entity = entityValueDict[bek.ENTITY_KEY.value]
+            entity = entityValueDict[bek.ENTITY.value]
             entitySearchPattern = patternTemplate.format(field=entity)
             result = re.search(entitySearchPattern, protocolName)
 
@@ -354,48 +354,37 @@ class BidsIncremental:
         Return:
             Filename from metadata according to BIDS standard 1.4.1.
         """
-        labelPairs = []  # all potential BIDS field-label pairs in the filename
+        # (entity, required in path) tuples to specify the order and necessity
+        # of how entities appear in the pathname
+        entitiesToAdd = [('subject', True), ('session', False), ('task', True),
+                         ('acquisition', False),
+                         ('contrast enhancing agent', False),
+                         ('phase-encoding direction', False),
+                         ('reconstruction', False), ('run', False),
+                         ('echo', False)]
 
-        labelPairs.append('sub-' + self.getEntity("subject"))
+        entityPairs = []
+        for entity, required in entitiesToAdd:
+            value = self.getEntity(entity)
+            if not value:
+                if not required:
+                    continue
+                else:
+                    raise RuntimeError("Expected %s to be present" % entity)
+            else:
+                shortName = self.ENTITIES.get(entity).get(bek.ENTITY.value)
+                entityPairs.append(shortName + '-' + value)
 
-        sesName = self.getEntity("session")
-        if sesName:
-            labelPairs.append('ses-' + sesName)
-
-        labelPairs.append('task-' + self.getEntity("task"))
-
-        runName = self.getEntity("run")
-        if runName:
-            labelPairs.append('run-' + runName)
-
+        # Add contrast label
         if extension == BidsFileExtension.EVENTS:
-            labelPairs.append("events")
+            entityPairs.append("events")
         else:
-            labelPairs.append(self.suffix())
+            entityPairs.append(self.suffix())
 
-        """
-        # distinguish using diff params for acquiring same task
-        acqLabel = getAcqLabel()
-        # "distinguish sequences using different constrast enhanced images"
-        ceLabel = getCeLabel()
-        # "distinguish different phase-encoding directions"
-        dirLabel = getDirLabel()
-        # "distinguish different...reconstruction algorithms"
-        recLabel = getRecLabel()
-        # "more than one run of same task"
-        runLabel = getRunLabel()
-        # "multi echo data"
-        echoLabel = getEchoLabel()
-        """
-
-        return '_'.join(labelPairs) + extension.value
+        return '_'.join(entityPairs) + extension.value
 
     def imageFileName(self) -> str:
         return self.makeBidsFileName(BidsFileExtension.IMAGE)
-
-    def makeImageFilePath(self) -> str:
-        dataDir = self.makeDataDirPath()
-        return os.path.join(dataDir, self.imageFileName())
 
     def metadataFileName(self) -> str:
         return self.makeBidsFileName(BidsFileExtension.METADATA)
@@ -405,6 +394,10 @@ class BidsIncremental:
 
     def datasetName(self) -> str:
         return self.datasetMetadata["Name"]
+
+    def makeImageFilePath(self) -> str:
+        dataDir = self.makeDataDirPath()
+        return os.path.join(dataDir, self.imageFileName())
 
     def dataDirPath(self) -> str:
         """

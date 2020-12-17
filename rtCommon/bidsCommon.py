@@ -32,9 +32,9 @@ class BidsFileExtension(Enum):
 
 # BIDS Entitiy information dict
 class BidsEntityKeys(Enum):
-    ENTITY_KEY = "entity"
-    FORMAT_KEY = "format"
-    DESCRIPTION_KEY = "description"
+    ENTITY = "entity"
+    FORMAT = "format"
+    DESCRIPTION = "description"
 
 
 # See test file for more specifics about expected format

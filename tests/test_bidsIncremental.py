@@ -15,11 +15,6 @@ from rtCommon.errors import ValidationError
 
 logger = logging.getLogger(__name__)
 
-# Permutations that the constructor must validate
-nonePermutations = [{"subject": None, "task": None, "suffix": None},
-                    {"subject": "test", "task": None, "suffix": None},
-                    {"subject": "test", "task": "test", "suffix": None}]
-
 
 # Test that construction fails for image metadata missing required fields
 def testInvalidConstruction(sampleNiftiImage, imageMetadataDict):
@@ -41,23 +36,6 @@ def testInvalidConstruction(sampleNiftiImage, imageMetadataDict):
 
         imageMetadataDict[key] = value
     imageMetadataDict["ProtocolName"] = protocolName
-
-
-"""
-@pytest.mark.parametrize("argDict", nonePermutations)
-def testNullConstruction(sampleNiftiImage, imageMetadataDict, argDict):
-    # Test empty image
-    with pytest.raises(ValidationError):
-        BidsIncremental(image=None,
-                        imageMetadata=imageMetadataDict)
-
-        # Test empty required fields
-        for p in nonePermutations:
-            with pytest.raises(ValidationError) as excinfo:
-                BidsIncremental(image=sampleNiftiImage,
-                                imgageMetadata=imageMetadataDict)
-            assert "Image" not in str(excinfo.value)
-"""
 
 
 # Test that valid arguments produce a BIDS incremental
