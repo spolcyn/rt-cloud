@@ -9,7 +9,8 @@ import pytest
 
 from common import (
     test_dicomPath,
-    test_3DNiftiPath,
+    test_3DNifti1Path,
+    test_3DNifti2Path,
     test_nifti1Path,
     test_nifti2Path
 )
@@ -62,7 +63,7 @@ def dicomImageMetadata(dicomImage):
 # 2-D NIfTI 1 image corrupted from the test DICOM image
 @pytest.fixture
 def sample2DNifti():
-    nifti = readNifti(test_3DNiftiPath)
+    nifti = readNifti(test_3DNifti1Path)
     newData = nifti.get_fdata().flatten()
     # max positive value of 2 byte, signed short used in Nifti header for
     # storing dimension information
@@ -71,8 +72,13 @@ def sample2DNifti():
 
 # 3-D NIfTI 1 image derived from the test DICOM image
 @pytest.fixture
-def sample3DNifti():
-    return readNifti(test_3DNiftiPath)
+def sample3DNifti1():
+    return readNifti(test_3DNifti1Path)
+
+# 3-D NIfTI 2 image derived from the test DICOM image
+@pytest.fixture
+def sample3DNifti2():
+    return readNifti(test_3DNifti2Path)
 
 # 4-D NIfTI 1 image derived from concatting the test DICOM image with itself
 @pytest.fixture

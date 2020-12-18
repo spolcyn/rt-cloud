@@ -59,9 +59,9 @@ class BidsIncremental:
         """
 
         """ Validate and store image """
-        if  image is None or \
-            (not isinstance(image, nib.Nifti1Image) and
-             not isinstance(image, nib.Nifti2Image)):
+        if image is None or \
+                (type(image) is not nib.Nifti1Image and
+                 type(image) is not nib.Nifti2Image):
             raise ValidationError("Image must be NIBabel Nifti 1 or 2 image, "
                                   "got type %s" % str(type(image)))
 
@@ -69,26 +69,34 @@ class BidsIncremental:
         self.image = nib.funcs.squeeze_image(image)
 
         # Validate dimensions
-        imageShape = image.get_fdata().shape
+        imageShape = self.image.get_fdata().shape
         logger.debug("IMage shape: %s", str(imageShape))
         if len(imageShape) < 3:
             raise ValidationError("Image must have at least 3 dimensions")
         elif len(imageShape) == 3:
             # Add one singleton dimension to make image 4-D
-            newData = np.expand_dims(image.get_fdata(), -1)
+            newData = np.expand_dims(self.image.get_fdata(), -1)
+            logger.debug("Type: %s", type(self.image))
+            if type(self.image) is nib.Nifti1Image:
+                self.image = nib.Nifti1Image(newData, self.image.affine,
+                                             header=self.image.header)
+            else:
+                self.image = nib.Nifti2Image(newData, self.image.affine,
+                                             header=self.image.header)
+
+        assert len(self.image.get_fdata().shape) == 4
 
         """ Validate and store image metadata """
         # Ensure BIDS-I has an independent metadata dictionary
         self._imgMetadata = deepcopy(imageMetadata)
 
         protocolName = self._imgMetadata.get("ProtocolName", None)
-        if protocolName is not None:
-            self._imgMetadata.update(self.metadataFromProtocolName(protocolName))
+        self._imgMetadata.update(self.metadataFromProtocolName(protocolName))
 
-        missingImageMetadata = self.missingImageMetadataFields(self._imgMetadata)
+        missingImageMetadata = self.missingImageMetadata(self._imgMetadata)
         if missingImageMetadata != []:
-            raise ValidationError("Image metadata missing required fields: %s" %
-                                   str(missingImageMetadata))
+            raise ValidationError(f"Image metadata missing required fields: "
+                                  f"{missingImageMetadata}")
 
         # Validate or modify fields that are now known to exist
         self._imgMetadata["TaskName"] = self._imgMetadata["task"]
@@ -99,13 +107,13 @@ class BidsIncremental:
                 continue
             elif value / 1000.0 <= maxValue:
                 logger.info(f"{field} has value {value} > {maxValue}. Assuming "
-                             "value is in milliseconds, converting to seconds.")
+                            f"value is in milliseconds, converting to seconds.")
                 value = value / 1000.0
                 self._imgMetadata[field] = value
             else:
                 raise ValidationError(f"{field} has value {value}, which is "
                                       f"greater than {maxValue} even if "
-                                       "interpreted as milliseconds.")
+                                      f"interpreted as milliseconds.")
 
         """ Validate dataset metadata or create default values """
         if datasetMetadata is not None:
@@ -178,7 +186,7 @@ class BidsIncremental:
                 "RepetitionTime": repetitionTime, "EchoTime": echoTime}
 
     @classmethod
-    def missingImageMetadataFields(cls, imageMeta: dict) -> list:
+    def missingImageMetadata(cls, imageMeta: dict) -> list:
         return [f for f in cls.REQUIRED_IMAGE_METADATA if f not in imageMeta]
 
     @classmethod
@@ -195,7 +203,7 @@ class BidsIncremental:
             otherwise.
 
         """
-        return len(cls.missingImageMetadataFields(imageMeta)) == 0
+        return len(cls.missingImageMetadata(imageMeta)) == 0
 
     @classmethod
     def metadataFromProtocolName(cls, protocolName: str) -> dict:
@@ -225,7 +233,6 @@ class BidsIncremental:
 
         return foundEntities
 
-
     def _exceptIfNotBids(self, entityName: str):
         """ Raise an exception if the argument is not a valid BIDS entity """
         if self.ENTITIES.get(entityName) is None:
@@ -235,10 +242,7 @@ class BidsIncremental:
 
     # TODO(spolcyn): Add specific getters for commonly used things, like getRun,
     # getSubject, getTask
-    # From the BIDS Spec: "A file name consists of a chain of entities, or
-    # key-value pairs, a suffix and an extension."
-    # Thus, we provide a set of methods to extract these values from the BIDS-I.
-    def getMetadataField(self, field: str, strict: bool=False) -> str:
+    def getMetadataField(self, field: str, strict: bool = False) -> str:
         """
         Retrieve value for the metadata field, if it exists.
 
@@ -256,7 +260,7 @@ class BidsIncremental:
             self._exceptIfNotBids(field)
         return self._imgMetadata.get(field, None)
 
-    def setMetadataField(self, field: str, value, strict: bool=False) -> None:
+    def setMetadataField(self, field: str, value, strict: bool = False) -> None:
         """
         Set metadata field to provided value.
 
@@ -275,7 +279,7 @@ class BidsIncremental:
         else:
             raise ValueError("Metadata field to set cannot be None")
 
-    def removeMetadataField(self, field: str, strict: bool=False) -> None:
+    def removeMetadataField(self, field: str, strict: bool = False) -> None:
         """
         Remove a piece of metadata.
 
@@ -287,8 +291,7 @@ class BidsIncremental:
             ValueError if 'strict' is True and 'field' is not a BIDS entity.
         """
         if field in self.REQUIRED_IMAGE_METADATA:
-            raise ValueError(f"\"{field}\" is required and cannot be "
-                              "removed from metadata.")
+            raise ValueError(f"\"{field}\" is required and cannot be removed")
 
         if strict:
             self._exceptIfNotBids(field)
@@ -397,8 +400,6 @@ class BidsIncremental:
 
         return os.path.join("/", *pathElements)
 
-    # TODO(spolcyn): Write a BIDS-I to a valid BIDS Archive on disk
-    # TODO(spolcyn): Call BIDS Validator on that BIDS Archive
     def writeToArchive(self, directoryPath: str):
         """
         Args:

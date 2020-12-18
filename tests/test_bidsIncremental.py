@@ -1,6 +1,5 @@
 from copy import deepcopy
 import io
-import json
 import logging
 import os
 import pickle
@@ -63,9 +62,11 @@ def testInvalidConstruction(sample2DNifti, sampleNifti1, imageMetadataDict):
 
 
 # Test that valid arguments produce a BIDS incremental
-def testValidConstruction(sample3DNifti, sampleNifti1, sampleNifti2, imageMetadataDict):
+def testValidConstruction(sample3DNifti1, sample3DNifti2,
+                          sampleNifti1, sampleNifti2, imageMetadataDict):
     # 3-D should be promoted to 4-D
-    assert BidsIncremental(sample3DNifti, imageMetadataDict) is not None
+    assert BidsIncremental(sample3DNifti1, imageMetadataDict) is not None
+    assert BidsIncremental(sample3DNifti2, imageMetadataDict) is not None
 
     # Both Nifti1 and Nifti2 images should work
     assert BidsIncremental(sampleNifti1, imageMetadataDict) is not None
@@ -73,11 +74,12 @@ def testValidConstruction(sample3DNifti, sampleNifti1, sampleNifti2, imageMetada
 
     # If the metadata provides a RepetitionTime or EchoTime that works without
     # adjustment, the construction should still work
-    repetitionTimeKey= "RepetitionTime"
+    repetitionTimeKey = "RepetitionTime"
     original = imageMetadataDict[repetitionTimeKey]
     imageMetadataDict[repetitionTimeKey] = 1.5
     assert BidsIncremental(sampleNifti1, imageMetadataDict) is not None
     imageMetadataDict[repetitionTimeKey] = original
+
 
 # Test that the string output of the BIDS-I is as expected
 def testStringOutput(validBidsI):
@@ -85,14 +87,15 @@ def testStringOutput(validBidsI):
     keyCount = len(validBidsI._imgMetadata.keys())
     version = validBidsI.version
     assert str(validBidsI) == f"Image shape: {imageShape}; " \
-                             f"# Metadata Keys: {keyCount}; " \
-                             f"Version: {version}"
+                              f"# Metadata Keys: {keyCount}; " \
+                              f"Version: {version}"
+
 
 # Test that equality comparison is as expected
-def testEquals(sampleNifti1, sample3DNifti, imageMetadataDict):
+def testEquals(sampleNifti1, sample3DNifti1, imageMetadataDict):
     # Test images with different headers
     assert BidsIncremental(sampleNifti1, imageMetadataDict) != \
-           BidsIncremental(sample3DNifti, imageMetadataDict)
+           BidsIncremental(sample3DNifti1, imageMetadataDict)
 
     # Test images with the same header, but different data
     newData = 1.1 * sampleNifti1.get_fdata()
@@ -113,6 +116,7 @@ def testEquals(sampleNifti1, sample3DNifti, imageMetadataDict):
     assert BidsIncremental(sampleNifti1, imageMetadataDict, datasetMeta1) != \
            BidsIncremental(sampleNifti1, imageMetadataDict, datasetMeta2)
 
+
 # Test that image metadata dictionaries can be properly created by the class
 def testImageMetadataDictCreation(imageMetadataDict):
     logger.debug("Subject: %s", imageMetadataDict["subject"])
@@ -125,6 +129,7 @@ def testImageMetadataDictCreation(imageMetadataDict):
 
     for key in createdDict.keys():
         assert createdDict.get(key) == imageMetadataDict.get(key)
+
 
 # Test that invalid dataset.json fields are rejected and valid ones are accepted
 def testDatasetMetadata(sampleNifti1, imageMetadataDict):
@@ -153,8 +158,8 @@ def testMetadataOutput(validBidsI, imageMetadataDict):
     # Data type - always 'func' currently
     assert validBidsI.dataType() == "func"
     # Entities
-    assert validBidsI.getMetadataField('subject') == imageMetadataDict["subject"]
-    assert validBidsI.getMetadataField('task') == imageMetadataDict["task"]
+    for entity in ['subject', 'task']:
+        assert validBidsI.getMetadataField(entity) == imageMetadataDict[entity]
     # Suffix
     assert validBidsI.suffix() == imageMetadataDict["suffix"]
 
