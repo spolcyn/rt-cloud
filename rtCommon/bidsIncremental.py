@@ -30,8 +30,8 @@ logger = logging.getLogger(__name__)
 class BidsIncremental:
     # TODO(spolcyn): Rename this to something more useful
     ENTITIES = loadBidsEntities()
-    requiredImageMetadata = ["subject", "task", "suffix",
-                             "RepetitionTime", "EchoTime"]
+    REQUIRED_IMAGE_METADATA = ["subject", "task", "suffix",
+                               "RepetitionTime", "EchoTime"]
 
     """
     BIDS Incremental data format suitable for streaming BIDS Archives
@@ -79,29 +79,29 @@ class BidsIncremental:
 
         """ Validate and store image metadata """
         # Ensure BIDS-I has an independent metadata dictionary
-        self.imgMetadata = deepcopy(imageMetadata)
+        self._imgMetadata = deepcopy(imageMetadata)
 
-        protocolName = self.imgMetadata.get("ProtocolName", None)
+        protocolName = self._imgMetadata.get("ProtocolName", None)
         if protocolName is not None:
-            self.imgMetadata.update(self.metadataFromProtocolName(protocolName))
+            self._imgMetadata.update(self.metadataFromProtocolName(protocolName))
 
-        missingImageMetadata = self.missingImageMetadataFields(self.imgMetadata)
+        missingImageMetadata = self.missingImageMetadataFields(self._imgMetadata)
         if missingImageMetadata != []:
             raise ValidationError("Image metadata missing required fields: %s" %
                                    str(missingImageMetadata))
 
         # Validate or modify fields that are now known to exist
-        self.imgMetadata["TaskName"] = self.imgMetadata["task"]
+        self._imgMetadata["TaskName"] = self._imgMetadata["task"]
         fieldToMaxValue = {"RepetitionTime": 100, "EchoTime": 1}
         for field, maxValue in fieldToMaxValue.items():
-            value = int(self.imgMetadata[field])
+            value = int(self._imgMetadata[field])
             if value <= maxValue:
                 continue
             elif value / 1000.0 <= maxValue:
                 logger.info(f"{field} has value {value} > {maxValue}. Assuming "
                              "value is in milliseconds, converting to seconds.")
                 value = value / 1000.0
-                self.imgMetadata[field] = value
+                self._imgMetadata[field] = value
             else:
                 raise ValidationError(f"{field} has value {value}, which is "
                                       f"greater than {maxValue} even if "
@@ -127,14 +127,13 @@ class BidsIncremental:
         # Configure additional required BIDS metadata and files
         self.readme = "Generated BIDS-Incremental Dataset from RT-Cloud"
 
-
         # The BIDS-I version for serialization
         self.version = 1
 
     def __str__(self):
         return "Image shape: {}; # Metadata Keys: {}; Version: {}".format(
             self.imageDimensions(),
-            len(self.imgMetadata.keys()),
+            len(self._imgMetadata.keys()),
             self.version)
 
     def __eq__(self, other):
@@ -148,7 +147,7 @@ class BidsIncremental:
             return False
 
         # Compare image metadata
-        if not self.imgMetadata == other.imgMetadata:
+        if not self._imgMetadata == other._imgMetadata:
             return False
 
         # Compare dataset metadata
@@ -180,7 +179,7 @@ class BidsIncremental:
 
     @classmethod
     def missingImageMetadataFields(cls, imageMeta: dict) -> list:
-        return [f for f in cls.requiredImageMetadata if f not in imageMeta]
+        return [f for f in cls.REQUIRED_IMAGE_METADATA if f not in imageMeta]
 
     @classmethod
     def isCompleteImageMetadata(cls, imageMeta: dict) -> bool:
@@ -226,73 +225,77 @@ class BidsIncremental:
 
         return foundEntities
 
+
+    def _exceptIfNotBids(self, entityName: str):
+        """ Raise an exception if the argument is not a valid BIDS entity """
+        if self.ENTITIES.get(entityName) is None:
+            errorMsg = "'{}' is not a valid BIDS entity name".format(entityName)
+            logger.debug(errorMsg)
+            raise ValueError(errorMsg)
+
     # TODO(spolcyn): Add specific getters for commonly used things, like getRun,
     # getSubject, getTask
     # From the BIDS Spec: "A file name consists of a chain of entities, or
     # key-value pairs, a suffix and an extension."
     # Thus, we provide a set of methods to extract these values from the BIDS-I.
-    def getEntity(self, entityName) -> str:
+    def getMetadataField(self, field: str, strict: bool=False) -> str:
         """
-        Retrieve the entity value for the provided full entity name from this
-        BIDS Incremental. Be sure to use the full name, e.g., 'subject' instead
-        of 'sub'.
+        Retrieve value for the metadata field, if it exists.
 
         Args:
-            entityName: The name of the BIDS entity to retrieve a value for.
-                A list of entity names is provided in the BIDS Standard. For
-                example, use 'Subject' for subject.
+            field: Metadata field to retrieve a value for.
+            strict: Only allow getting of official BIDS entity fields.
 
         Returns:
-            The entity value, or None if this BIDS incremental doesn't contain a
-            value for the entity name.
+            Entity's value, or None if the entity isn't present in the metadata
 
+        Raises:
+            ValueError if 'strict' is True and 'field' is not a BIDS entity.
         """
-        if self.ENTITIES.get(entityName) is None:
-            errorMsg = "'{}' is not a valid BIDS entity name".format(entityName)
-            logger.debug(errorMsg)
-            raise ValueError(errorMsg)
+        if strict:
+            self._exceptIfNotBids(field)
+        return self._imgMetadata.get(field, None)
 
-        return self.imgMetadata.get(entityName, None)
-
-    def addEntity(self, entityName: str, entityValue: str) -> None:
+    def setMetadataField(self, field: str, value, strict: bool=False) -> None:
         """
-        Add an entity name-value pair to the BIDS Incremental's metadata. Be
-        sure to use the full entity name, e.g., 'subject' instead of 'sub'.
+        Set metadata field to provided value.
 
         Args:
-            entityName: The name of the BIDS entity to set a value for.
-                A list of entity names is provided in the BIDS Standard. For
-                example, use 'subject' for subject.
-            entityValue: The value to set for the provided entity.
+            field: Metadata field to set value for.
+            value: Value to set for the provided entity.
+            strict: Only allow setting of official BIDS entity fields.
 
+        Raises:
+            ValueError if 'strict' is True and 'field' is not a BIDS entity.
         """
-        if self.ENTITIES.get(entityName) is None:
-            errorMsg = "'{}' is not a valid BIDS entity name".format(entityName)
-            logger.debug(errorMsg)
-            raise ValueError(errorMsg)
+        if strict:
+            self._exceptIfNotBids(field)
+        if field:
+            self._imgMetadata[field] = value
+        else:
+            raise ValueError("Metadata field to set cannot be None")
 
-        self.imgMetadata[entityName] = entityValue
-
-    def removeEntity(self, entityName: str) -> None:
+    def removeMetadataField(self, field: str, strict: bool=False) -> None:
         """
-        Remove a entity name-value pair to the BIDS Incremental's metadata. Be
-        sure to use the full entity name, e.g., 'subject' instead of 'sub'.
+        Remove a piece of metadata.
 
         Args:
-            entityName: The name of the BIDS entity to remove.  A list of entity
-                names is provided in the BIDS Standard. For example, use
-                'subject' for subject.
+            field: BIDS entity name to retrieve a value for.
+            strict: Only allow remove of official BIDS entity fields.
 
+        Raises:
+            ValueError if 'strict' is True and 'field' is not a BIDS entity.
         """
-        if self.ENTITIES.get(entityName) is None:
-            errorMsg = "'{}' is not a valid BIDS entity name".format(entityName)
-            logger.debug(errorMsg)
-            raise ValueError(errorMsg)
+        if field in self.REQUIRED_IMAGE_METADATA:
+            raise ValueError(f"\"{field}\" is required and cannot be "
+                              "removed from metadata.")
 
-        self.imgMetadata.pop(entityName, None)
+        if strict:
+            self._exceptIfNotBids(field)
+        self._imgMetadata.pop(field, None)
 
     def suffix(self) -> str:
-        return self.imgMetadata.get("suffix")
+        return self._imgMetadata.get("suffix")
 
     # Additional methods to access internal BIDS-I data
     def dataType(self):
@@ -337,22 +340,14 @@ class BidsIncremental:
         """
         # (entity, required in path) tuples to specify the order and necessity
         # of how entities appear in the pathname
-        entitiesToAdd = [('subject', True), ('session', False), ('task', True),
-                         ('acquisition', False),
-                         ('contrast enhancing agent', False),
-                         ('phase-encoding direction', False),
-                         ('reconstruction', False), ('run', False),
-                         ('echo', False)]
+        entitiesToAdd = ['subject', 'session', 'task', 'acquisition',
+                         'contrast enhancing agent', 'phase-encoding direction',
+                         'reconstruction', 'run', 'echo']
 
         entityPairs = []
-        for entity, required in entitiesToAdd:
-            value = self.getEntity(entity)
-            if not value:
-                if not required:
-                    continue
-                else:
-                    raise RuntimeError("Expected %s to be present" % entity)
-            else:
+        for entity in entitiesToAdd:
+            value = self.getMetadataField(entity)
+            if value:
                 shortName = self.ENTITIES.get(entity).get(bek.ENTITY.value)
                 entityPairs.append(shortName + '-' + value)
 
@@ -391,9 +386,9 @@ class BidsIncremental:
             /sub-01/ses-2011/anat/
 
         """
-        pathElements = ['sub-' + self.getEntity("subject")]
+        pathElements = ['sub-' + self.getMetadataField("subject")]
 
-        session = self.getEntity("session")
+        session = self.getMetadataField("session")
         if session:
             pathElements.append('ses-' + session)
 
@@ -412,9 +407,9 @@ class BidsIncremental:
         # Build path to the data directory
         # Overall hierarchy:
         # sub-<participant_label>/[/ses-<session_label>]/<data_type>/
-        pathElements = ['sub-' + self.getEntity("subject")]
+        pathElements = ['sub-' + self.getMetadataField("subject")]
 
-        session = self.getEntity("session")
+        session = self.getMetadataField("session")
         if session:
             pathElements.append('ses-' + session)
 
@@ -436,9 +431,9 @@ class BidsIncremental:
             # they're included in the filename)
             # TODO(spolcyn): Remove after done testing for full bids validation
             # TODO(spolcyn): Support volume timing and associated fields
-            self.imgMetadata["SliceTiming"] = list(np.linspace(0.0, 1.5, 27))
+            self._imgMetadata["SliceTiming"] = list(np.linspace(0.0, 1.5, 27))
 
-            json.dump(self.imgMetadata, metadataFile, sort_keys=True, indent=4)
+            json.dump(self._imgMetadata, metadataFile, sort_keys=True, indent=4)
 
         # TODO(spolcyn): Make events file correspond correctly to the imaging
         # sequence, not just to fulfill BIDS validation

@@ -33,7 +33,7 @@ def testInvalidConstruction(sample2DNifti, sampleNifti1, imageMetadataDict):
 
     # Test incomplete metadata
     protocolName = imageMetadataDict.pop("ProtocolName")
-    for key in BidsIncremental.requiredImageMetadata:
+    for key in BidsIncremental.REQUIRED_IMAGE_METADATA:
         logger.debug("Key: %s", key)
         value = imageMetadataDict.pop(key)
 
@@ -82,7 +82,7 @@ def testValidConstruction(sample3DNifti, sampleNifti1, sampleNifti2, imageMetada
 # Test that the string output of the BIDS-I is as expected
 def testStringOutput(validBidsI):
     imageShape = str(validBidsI.imageDimensions())
-    keyCount = len(validBidsI.imgMetadata.keys())
+    keyCount = len(validBidsI._imgMetadata.keys())
     version = validBidsI.version
     assert str(validBidsI) == f"Image shape: {imageShape}; " \
                              f"# Metadata Keys: {keyCount}; " \
@@ -147,13 +147,14 @@ def testDatasetMetadata(sampleNifti1, imageMetadataDict):
 # the correct values
 def testMetadataOutput(validBidsI, imageMetadataDict):
     with pytest.raises(ValueError):
-        validBidsI.getEntity("InvalidEntityName")
+        validBidsI.getMetadataField("InvalidEntityName", strict=True)
+    assert validBidsI.getMetadataField("InvalidEntityName") is None
 
     # Data type - always 'func' currently
     assert validBidsI.dataType() == "func"
     # Entities
-    assert validBidsI.getEntity('subject') == imageMetadataDict["subject"]
-    assert validBidsI.getEntity('task') == imageMetadataDict["task"]
+    assert validBidsI.getMetadataField('subject') == imageMetadataDict["subject"]
+    assert validBidsI.getMetadataField('task') == imageMetadataDict["task"]
     # Suffix
     assert validBidsI.suffix() == imageMetadataDict["suffix"]
 
@@ -176,35 +177,50 @@ def testParseProtocolName():
         assert parsedValues[key] == expectedValue
 
 
-# Test adding BIDS-I entities API works as expected
-def testAddEntity(validBidsI):
+# Test setting BIDS-I metadata API works as expected
+def testSetMetadata(validBidsI):
+    # Test non-official BIDS entity fails with strict
     with pytest.raises(ValueError):
-        validBidsI.addEntity("nonentity", "value")
+        validBidsI.setMetadataField("nonentity", "value", strict=True)
+
+    # Non-official BIDS entity succeeds without strict
+    validBidsI.setMetadataField("nonentity", "value", strict=False)
+    assert validBidsI.getMetadataField("nonentity", strict=False) == "value"
+    validBidsI.removeMetadataField("nonentity", strict=False)
+
+    # None field is invalid
+    with pytest.raises(ValueError):
+        validBidsI.setMetadataField(None, None)
 
     entityName = "acquisition"
     newValue = "newValue"
-    originalValue = validBidsI.getEntity(entityName)
+    originalValue = validBidsI.getMetadataField(entityName)
 
-    validBidsI.addEntity(entityName, newValue)
-    assert validBidsI.getEntity(entityName) == newValue
+    validBidsI.setMetadataField(entityName, newValue)
+    assert validBidsI.getMetadataField(entityName) == newValue
 
-    validBidsI.addEntity(entityName, originalValue)
-    assert validBidsI.getEntity(entityName) == originalValue
+    validBidsI.setMetadataField(entityName, originalValue)
+    assert validBidsI.getMetadataField(entityName) == originalValue
 
 
-# Test removing BIDS-I entities API works as expected
-def testRemoveEntity(validBidsI):
+# Test removing BIDS-I metadata API works as expected
+def testRemoveMetadata(validBidsI):
+    # Fail for entities that don't exist
     with pytest.raises(ValueError):
-        validBidsI.removeEntity("nonentity")
+        validBidsI.removeMetadataField("nonentity", strict=True)
+
+    # Fail for entities that are required to be in the dictionary
+    with pytest.raises(ValueError):
+        validBidsI.removeMetadataField("subject")
 
     entityName = "acquisition"
-    originalValue = validBidsI.getEntity(entityName)
+    originalValue = validBidsI.getMetadataField(entityName)
 
-    validBidsI.removeEntity(entityName)
-    assert validBidsI.getEntity(entityName) is None
+    validBidsI.removeMetadataField(entityName)
+    assert validBidsI.getMetadataField(entityName) is None
 
-    validBidsI.addEntity(entityName, originalValue)
-    assert validBidsI.getEntity(entityName) == originalValue
+    validBidsI.setMetadataField(entityName, originalValue)
+    assert validBidsI.getMetadataField(entityName) == originalValue
 
 
 # Test that the BIDS-I interface methods for extracting internal NIfTI data
@@ -258,12 +274,12 @@ def testFilenameConstruction(validBidsI, imageMetadataDict):
 # correct based on the metadata within it
 def testArchivePathConstruction(validBidsI, imageMetadataDict):
     session = "01"
-    validBidsI.addEntity("session", session)
+    validBidsI.setMetadataField("session", session)
 
     assert validBidsI.dataDirPath() == \
         "/sub-{}/ses-{}/func/".format(imageMetadataDict["subject"], session)
 
-    validBidsI.removeEntity("session")
+    validBidsI.removeMetadataField("session")
 
 
 # Test that writing the BIDS-I to disk returns a properly formatted BIDS archive
