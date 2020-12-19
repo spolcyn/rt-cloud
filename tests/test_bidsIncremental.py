@@ -33,7 +33,6 @@ def testInvalidConstruction(sample2DNifti, sampleNifti1, imageMetadataDict):
     # Test incomplete metadata
     protocolName = imageMetadataDict.pop("ProtocolName")
     for key in BidsIncremental.REQUIRED_IMAGE_METADATA:
-        logger.debug("Key: %s", key)
         value = imageMetadataDict.pop(key)
 
         assert not BidsIncremental.isCompleteImageMetadata(imageMetadataDict)
@@ -119,7 +118,6 @@ def testEquals(sampleNifti1, sample3DNifti1, imageMetadataDict):
 
 # Test that image metadata dictionaries can be properly created by the class
 def testImageMetadataDictCreation(imageMetadataDict):
-    logger.debug("Subject: %s", imageMetadataDict["subject"])
     createdDict = BidsIncremental.createImageMetadataDict(
                     subject=imageMetadataDict["subject"],
                     task=imageMetadataDict["task"],
@@ -291,21 +289,20 @@ def testArchivePathConstruction(validBidsI, imageMetadataDict):
 # in the correct location with all the data in the BIDS-I
 def testDiskOutput(validBidsI):
     # Write the archive
-    directoryPath = tempfile.gettempdir()
-    validBidsI.writeToArchive(directoryPath)
+    datasetRoot = os.path.join(tempfile.gettempdir(), "bids-pytest-dataset")
+    validBidsI.writeToArchive(datasetRoot)
 
     # Validate the BIDS-compliance of each path (relative to dataset root) of
     # every file in the archive
-    datasetPath = os.path.join(directoryPath, validBidsI.datasetName(), "")
     validator = BIDSValidator()
-    for dirPath, _, filenames in os.walk(datasetPath):
+    for dirPath, _, filenames in os.walk(datasetRoot):
         for f in filenames:
             fname = os.path.join(dirPath, f)
-            fname = fname.replace(datasetPath, os.path.sep)
+            fname = fname.replace(datasetRoot, "")
             assert validator.is_bids(fname)
 
     # Cleanup temp directory if test succeeded; leave for inspection otherwise
-    shutil.rmtree(datasetPath)
+    shutil.rmtree(datasetRoot)
 
 
 # Test serialization results in equivalent BIDS-I object

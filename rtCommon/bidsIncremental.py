@@ -70,13 +70,11 @@ class BidsIncremental:
 
         # Validate dimensions
         imageShape = self.image.get_fdata().shape
-        logger.debug("IMage shape: %s", str(imageShape))
         if len(imageShape) < 3:
             raise ValidationError("Image must have at least 3 dimensions")
         elif len(imageShape) == 3:
             # Add one singleton dimension to make image 4-D
             newData = np.expand_dims(self.image.get_fdata(), -1)
-            logger.debug("Type: %s", type(self.image))
             if type(self.image) is nib.Nifti1Image:
                 self.image = nib.Nifti1Image(newData, self.image.affine,
                                              header=self.image.header)
@@ -236,9 +234,7 @@ class BidsIncremental:
     def _exceptIfNotBids(self, entityName: str):
         """ Raise an exception if the argument is not a valid BIDS entity """
         if self.ENTITIES.get(entityName) is None:
-            errorMsg = "'{}' is not a valid BIDS entity name".format(entityName)
-            logger.debug(errorMsg)
-            raise ValueError(errorMsg)
+            raise ValueError(f"{entityName} is not a valid BIDS entity name")
 
     # TODO(spolcyn): Add specific getters for commonly used things, like getRun,
     # getSubject, getTask
@@ -377,10 +373,13 @@ class BidsIncremental:
     def imageFilePath(self) -> str:
         return os.path.join(self.makeDataDirPath(), self.imageFileName())
 
+    def metadataFilePath(self) -> str:
+        return os.path.join(self.makeDataDirPath(), self.metadataFileName())
+
     def dataDirPath(self) -> str:
         """
-        Returns the path to the data directory this incremental's data would be
-        in if it were in a full BIDS archive.
+        Path to where this incremental's data would be in a BIDS archive,
+        relative to the archive root.
 
         Returns:
             Path string relative to root of the imaginary dataset.
@@ -400,10 +399,14 @@ class BidsIncremental:
 
         return os.path.join("/", *pathElements)
 
-    def writeToArchive(self, directoryPath: str):
+    def writeToArchive(self, datasetRoot: str):
         """
+        Writes the incremental's data to a directory on disk. NOTE: The
+        directory is assumed to be empty, and no checks are made for data that
+        would be overwritten.
+
         Args:
-            directoryPath: Location to write the BIDS-I derived BIDS Archive
+            datasetRoot: Path to the root of the BIDS archive to be written to.
         """
         # Build path to the data directory
         # Overall hierarchy:
@@ -416,8 +419,7 @@ class BidsIncremental:
 
         pathElements.append(self.dataType())
 
-        datasetDir = os.path.join(directoryPath, self.datasetName())
-        dataDirPath = os.path.join(datasetDir, *pathElements)
+        dataDirPath = os.path.join(datasetRoot, *pathElements)
         os.makedirs(dataDirPath, exist_ok=True)
 
         # Write image to data folder
@@ -443,12 +445,12 @@ class BidsIncremental:
             eventsFile.write('onset\tduration\tresponse_time\n')
 
         # Write out dataset description
-        descriptionPath = os.path.join(datasetDir, "dataset_description.json")
+        descriptionPath = os.path.join(datasetRoot, "dataset_description.json")
         with open(descriptionPath, mode='w') as description:
             json.dump(self.datasetMetadata, description)
 
         # Write out readme
-        with open(os.path.join(datasetDir, "README"), mode='w') as readme:
+        with open(os.path.join(datasetRoot, "README"), mode='w') as readme:
             readme.write(self.readme)
 
     """ END BIDS-I ARCHIVE EMULTATION API """
