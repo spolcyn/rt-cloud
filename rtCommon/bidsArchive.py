@@ -11,10 +11,12 @@ import os
 from typing import List
 
 from bids import BIDSLayout
+from bids.exceptions import BIDSValidationError
 import bids.config as bc
 import nibabel as nib
 
 import rtCommon.bidsCommon as bidsUtils
+from rtCommon.bidsIncremental import BidsIncremental
 from rtCommon.imageHandling import readNifti
 
 logger = logging.getLogger(__name__)
@@ -163,11 +165,23 @@ class BidsArchive:
     """
     Represents a BIDS Archive
     """
-    def __init__(self, rootPath: str, datasetName: str = None):
-        self.dataset = BidsDataset(rootPath)
+    def __init__(self, rootPath: str):
+        self.rootPath = rootPath
+        try:
+            self.openDataset(self.rootPath)
+        except Exception as e:
+            logger.info("Failed to open dataset at %s. %s",
+                        self.rootPath, str(e))
+            self.dataset = None
 
     def __str__(self):
         return str(self.dataset)
+
+    def isEmpty(self) -> bool:
+        return (self.dataset is None)
+
+    def openDataset(self, rootPath: str):
+        self.dataset = BidsDataset(rootPath)
 
     def pathExists(self, path: str) -> bool:
         """
@@ -189,3 +203,71 @@ class BidsArchive:
 
     def addMetadata(self, metadata: dict, path: str) -> None:
         self.dataset.addMetadata(metadata, path)
+
+    def appendIncremental(self,
+                          incremental: BidsIncremental,
+                          makePath: bool = True) -> None:
+        """
+        Appends a BIDS Incremental's image data and metadata to the archive,
+        creating new directories if necessary (this behavior can be overridden).
+
+        Args:
+            incremental: BIDS Incremental to append
+            makePath: Create new directory path for BIDS-I data if needed
+
+        Raises:
+            ValidationError: If the image path within the BIDS-I would result in
+                directory creation and makePath is set to False.
+        """
+        # 1) Create target path for image in archive
+        dataDirPath = incremental.dataDirPath()
+        imgPath = incremental.imageFilePath()
+        metadataPath = incremental.metadataFilePath()
+
+        # 2) Verify we have a valid way to append the image to the archive. 3 cases:
+        # 2.0) Archive is empty and must be created
+        # 2.1) Image already exists within archive, append this Nifti to that Nifti
+        # 2.2) Image doesn't exist in archive, but rest of the path is valid for the
+        # archive; create new Nifti file within the archive
+        # 2.3) Neither image nor path is valid for provided archive; fail append
+        if self.isEmpty():
+            incremental.writeToArchive(self.rootPath)
+            self.openDataset(self.rootPath)
+
+        elif archive.pathExists(imgPath):
+            logger.debug("Image exists in archive, appending")
+            archiveImg = self.getImage(imgPath)
+
+            # Validate header match
+            if not verifyNiftiHeadersMatch(incremental.image,
+                                           archiveImg):
+                raise ValidationError("Nifti headers failed validation!")
+            if not verifyMetadataMatch(incremental.imgMetadata,
+                                       self.getMetadata(metadataPath)):
+                raise ValidationError("Image metadata failed validation!")
+
+            # Build 4-D NIfTI if archive has 3-D, concat to 4-D otherwise
+            incrementalData = incremental.image.get_fdata()
+            archiveData = archiveImg.get_fdata()
+
+            if len(archiveData.shape) == 3:
+                newArchiveData = np.stack((archiveData, incrementalData), axis=3)
+            else:
+                incrementalData = np.expand_dims(incrementalData, 3)
+                newArchiveData = np.concatenate((archiveData, incrementalData),
+                                                axis=3)
+
+            newImg = nib.Nifti1Image(newArchiveData,
+                                     archiveImg.affine,
+                                     header=archiveImg.header)
+            newImg.update_header()
+            self.addImage(newImg, imgPath)
+
+        elif archive.pathExists(imgDirPath) or makePath is True:
+            logger.debug("Image doesn't exist in archive, creating")
+            self.addImage(incremental.image, imgPath)
+            self.addMetadata(incremental.imgMetadata, metadataPath)
+
+        else:
+            raise ValidationError("No valid archive path for image and no override \
+                                   specified, can't append")

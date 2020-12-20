@@ -86,10 +86,17 @@ class BidsIncremental:
 
         """ Validate and store image metadata """
         # Ensure BIDS-I has an independent metadata dictionary
+        # TODO(spolcyn): Replace this deepcopy with building a dictionary of
+        # BIDSEntity types from PyBids
         self._imgMetadata = deepcopy(imageMetadata)
 
         protocolName = self._imgMetadata.get("ProtocolName", None)
         self._imgMetadata.update(self.metadataFromProtocolName(protocolName))
+
+        # TODO(spolcyn): Make a more extensible approach using PyBids entities
+        # to putting values into the proper types
+        if self._imgMetadata.get("run", None):
+            self._imgMetadata["run"] = int(self._imgMetadata["run"])
 
         missingImageMetadata = self.missingImageMetadata(self._imgMetadata)
         if missingImageMetadata != []:
@@ -348,7 +355,7 @@ class BidsIncremental:
             value = self.getMetadataField(entity)
             if value:
                 shortName = self.ENTITIES.get(entity).get(bek.ENTITY.value)
-                entityPairs.append(shortName + '-' + value)
+                entityPairs.append(shortName + '-' + str(value))
 
         # Add contrast label
         if extension == BidsFileExtension.EVENTS:
@@ -371,10 +378,10 @@ class BidsIncremental:
         return self.datasetMetadata["Name"]
 
     def imageFilePath(self) -> str:
-        return os.path.join(self.makeDataDirPath(), self.imageFileName())
+        return os.path.join(self.dataDirPath(), self.imageFileName())
 
     def metadataFilePath(self) -> str:
-        return os.path.join(self.makeDataDirPath(), self.metadataFileName())
+        return os.path.join(self.dataDirPath(), self.metadataFileName())
 
     def dataDirPath(self) -> str:
         """
@@ -447,7 +454,7 @@ class BidsIncremental:
         # Write out dataset description
         descriptionPath = os.path.join(datasetRoot, "dataset_description.json")
         with open(descriptionPath, mode='w') as description:
-            json.dump(self.datasetMetadata, description)
+            json.dump(self.datasetMetadata, description, indent=4)
 
         # Write out readme
         with open(os.path.join(datasetRoot, "README"), mode='w') as readme:

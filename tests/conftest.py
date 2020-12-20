@@ -8,6 +8,7 @@ import pydicom
 import pytest
 
 from common import (
+    test_inputDirPath,
     test_dicomPath,
     test_3DNifti1Path,
     test_3DNifti2Path,
@@ -97,7 +98,7 @@ def imageMetadataDict(dicomImageMetadata):
     well as extra metadata extracted from the test DICOM image.
     """
     meta = {'subject': '01', 'task': 'story', 'suffix': 'bold',  # REQUIRED
-            'session': '01', 'run': '01'}  # EXTRACTED
+            'session': '01', 'run': '1'}  # EXTRACTED
     meta.update(dicomImageMetadata)  # DICOM
     return meta
 
@@ -108,5 +109,10 @@ def validBidsI(sampleNifti1, imageMetadataDict):
     """
     return BidsIncremental(image=sampleNifti1,
                            imageMetadata=imageMetadataDict)
+
+@pytest.fixture
+def emptyBidsArchive():
+    pass
+
 
 """ END BIDS RELATED FIXTURES """
