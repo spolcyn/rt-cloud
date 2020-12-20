@@ -1,9 +1,13 @@
+import logging
 import os
 import shutil
 import tempfile
 
 from rtCommon import bidsLibrary as bl
 from rtCommon.bidsArchive import BidsArchive
+from rtCommon import bidsCommon
+
+logger = logging.getLogger(__name__)
 
 
 # Test metadata is correctly extracted from a DICOM to public and private
@@ -22,25 +26,40 @@ def testEmptyArchiveCreation():
     datasetRoot = os.path.join(tempfile.gettempdir(), "bids-archive")
     assert BidsArchive(datasetRoot) is not None
 
-    # Clean up
-    shutil.rmtree(datasetRoot)
-
 
 # Test images are correctly appended to an empty archive
-def testEmptyArchiveAppend(validBidsI, imageMetadataDict):
-    # Test creation in root with no BIDS-I, then append to get a non-empty
-    archive = BidsArchive(os.path.join(tempfile.gettempdir(), "bids-archive"))
+def testEmptyArchiveAppend(validBidsI, imageMetadataDict, tmpdir):
+    # Create in root with no BIDS-I, then append to make non-empty archive
+    datasetRoot = os.path.join(tmpdir, testEmptyArchiveAppend.__name__)
+    archive = BidsArchive(datasetRoot)
     archive.appendIncremental(validBidsI)
     assert not archive.isEmpty()
 
-    # Verify all BIDS-I metadata is discovered by the BIDS archive dataset
-
-    # Clean up
-    shutil.rmtree(datasetRoot)
+    # Compare metadata reported by PyBids to metadata we expect has been written
+    bidsLayout = archive.dataset.data
+    metadata = {}
+    for f in bidsLayout.get(return_type='filename'):
+        if not bidsCommon.isNiftiPath(f):
+            continue
+        metadata.update(bidsLayout.get_metadata(f, include_entities=True))
+    for key, value in metadata.items():
+        niftiValue = imageMetadataDict.get(key, None)
+        if niftiValue is None or niftiValue == value:
+            continue
+        # special case BIDS interpretation of int as int vs. dict has string
+        elif type(value) is int and int(niftiValue) == value:
+            continue
+        # special case when metadata has been converted to BIDS values (seconds)
+        # by BIDS-I construction
+        elif int(niftiValue) / 1000 == value:
+            continue
+        else:
+            assert False, f"{niftiValue}, type {type(niftiValue)} != {value}, "\
+                          f"type {type(value)}"
 
 
 # Test images are correctly appended to an archive with just a 3-D image in it
-def test3DAppend():
+def test3DAppend(bidsArchive3D):
     pass
 
 

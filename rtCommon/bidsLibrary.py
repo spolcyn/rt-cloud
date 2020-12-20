@@ -54,10 +54,12 @@ def getMetadata(dicomImg: pydicom.dataset.Dataset) -> (dict, dict):
         cleanedKey = bidsCommon.makeDicomFieldBidsCompatible(elem.name)
         # in DICOM, public tags have even group numbers and private tags are odd
         # http://dicom.nema.org/dicom/2013/output/chtml/part05/chapter_7.html
+        value = str(elem.value)
+
         if elem.tag.is_private:
-            privateMeta[cleanedKey] = str(elem.value)
+            privateMeta[cleanedKey] = value
         else:
-            publicMeta[cleanedKey] = str(elem.value)
+            publicMeta[cleanedKey] = value
 
     return (publicMeta, privateMeta)
 

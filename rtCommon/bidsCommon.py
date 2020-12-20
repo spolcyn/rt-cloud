@@ -20,6 +20,10 @@ BIDS_VERSION = "1.4.1"
 
 # Required fields in the dataset_description.json file
 DATASET_DESC_REQ_FIELDS = ["Name", "BIDSVersion"]
+DEFAULT_DATASET_DESC = {"Name": "bidsi_dataset",
+                        "BIDSVersion": str(BIDS_VERSION),
+                        "Authors": ["The RT-Cloud Authors",
+                                    "The Dataset Author"]}
 
 
 # Valid extensions for various file types in the BIDS format

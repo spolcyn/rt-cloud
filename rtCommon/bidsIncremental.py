@@ -17,11 +17,12 @@ import numpy as np
 
 from rtCommon.errors import ValidationError
 from rtCommon.bidsCommon import (
-    loadBidsEntities,
     BidsEntityKeys as bek,
     BidsFileExtension,
     BIDS_VERSION,
     DATASET_DESC_REQ_FIELDS,
+    DEFAULT_DATASET_DESC,
+    loadBidsEntities,
 )
 
 logger = logging.getLogger(__name__)
@@ -75,12 +76,8 @@ class BidsIncremental:
         elif len(imageShape) == 3:
             # Add one singleton dimension to make image 4-D
             newData = np.expand_dims(self.image.get_fdata(), -1)
-            if type(self.image) is nib.Nifti1Image:
-                self.image = nib.Nifti1Image(newData, self.image.affine,
-                                             header=self.image.header)
-            else:
-                self.image = nib.Nifti2Image(newData, self.image.affine,
-                                             header=self.image.header)
+            self.image = self.image.__class__(newData, self.image.affine,
+                                              self.image.header)
 
         assert len(self.image.get_fdata().shape) == 4
 
@@ -132,11 +129,7 @@ class BidsIncremental:
                 raise ValidationError("Dataset description missing these "
                                       "required fields: " + str(missingFields))
         else:
-            self.datasetMetadata = {"Name": "bidsi_dataset",
-                                    "BIDSVersion": str(BIDS_VERSION),
-                                    "Authors": ["The RT-Cloud Authors",
-                                                "The Dataset Author"]}
-
+            self.datasetMetadata = DEFAULT_DATASET_DESC
         # Configure additional required BIDS metadata and files
         self.readme = "Generated BIDS-Incremental Dataset from RT-Cloud"
 

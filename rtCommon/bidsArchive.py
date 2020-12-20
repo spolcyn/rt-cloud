@@ -28,9 +28,9 @@ bc.set_option('extension_initial_dot', True)
 class BidsDataset:
     def __init__(self, path: str):
         self.name = os.path.basename(os.path.normpath(path))
-        logger.debug("Loading dataset \"%s\" from: %s", self.name, path)
+        # logger.debug("Loading dataset \"%s\" from: %s", self.name, path)
         self.data = BIDSLayout(path)
-        logger.debug("Dataset info: %s", self.data)
+        # logger.debug("Dataset info: %s", self.data)
 
     def __str__(self):
         return str(self.data)
@@ -94,7 +94,7 @@ class BidsDataset:
         """
         # TODO(spolcyn): Find if there's a more efficient way to update the index
         # that doesn't rely on implementation details of the PyBids (ie, the
-        # SQLite DB it uses)
+        # SQL DB it uses)
         self.data = BIDSLayout(self.data.root)
 
     def addImage(self, img: nib.Nifti1Image, path: str) -> None:
@@ -234,7 +234,7 @@ class BidsArchive:
             incremental.writeToArchive(self.rootPath)
             self.openDataset(self.rootPath)
 
-        elif archive.pathExists(imgPath):
+        elif self.pathExists(imgPath):
             logger.debug("Image exists in archive, appending")
             archiveImg = self.getImage(imgPath)
 
@@ -263,7 +263,7 @@ class BidsArchive:
             newImg.update_header()
             self.addImage(newImg, imgPath)
 
-        elif archive.pathExists(imgDirPath) or makePath is True:
+        elif self.pathExists(imgDirPath) or makePath is True:
             logger.debug("Image doesn't exist in archive, creating")
             self.addImage(incremental.image, imgPath)
             self.addMetadata(incremental.imgMetadata, metadataPath)
