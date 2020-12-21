@@ -45,14 +45,10 @@ class BidsIncremental:
         Initializes a BIDS Incremental object with provided image and metadata.
 
         Args:
-            image: Nifti image for this BIDS-I as an NiBabel NiftiImage.
-                NIfTI 2 is not officially tested, but should work without issue.
-            subject: Subject ID corresponding to this image
-            task: Task name corresponding to this image
-            suffix: Image contrast type for this image ('bold' or 'cbv')
-            imgMetadata: Additional metadata about the image
+            image: Nifti image as an NiBabel NiftiImage.
+            imgMetadata: Metadata for image
             datasetMetadata: Top-level dataset metadata for the BIDS dataset
-                this represents (dataset_description.json).
+                to be placed in a dataset_description.json.
 
         Raises:
             ValidationError: If any required argument is None.
@@ -79,7 +75,7 @@ class BidsIncremental:
             self.image = self.image.__class__(newData, self.image.affine,
                                               self.image.header)
 
-        assert len(self.image.get_fdata().shape) == 4
+        assert len(self.imageDimensions()) == 4
 
         """ Validate and store image metadata """
         # Ensure BIDS-I has an independent metadata dictionary
@@ -118,18 +114,18 @@ class BidsIncremental:
                                       f"interpreted as milliseconds.")
 
         """ Validate dataset metadata or create default values """
-        if datasetMetadata is not None:
-            missingFields = [field for
-                             field in DATASET_DESC_REQ_FIELDS
+        if datasetMetadata is None:
+            self.datasetMetadata = DEFAULT_DATASET_DESC
+        else:
+            missingFields = [field for field in DATASET_DESC_REQ_FIELDS
                              if datasetMetadata.get(field) is None]
 
-            if missingFields == []:
-                self.datasetMetadata = deepcopy(datasetMetadata)
+            if missingFields:
+                raise ValidationError(
+                    f"Dataset description needs: {str(missingFields)}")
             else:
-                raise ValidationError("Dataset description missing these "
-                                      "required fields: " + str(missingFields))
-        else:
-            self.datasetMetadata = DEFAULT_DATASET_DESC
+                self.datasetMetadata = deepcopy(datasetMetadata)
+
         # Configure additional required BIDS metadata and files
         self.readme = "Generated BIDS-Incremental Dataset from RT-Cloud"
 
@@ -302,6 +298,10 @@ class BidsIncremental:
         """ func or anat """
         return "func"
 
+    @property
+    def imgMetadata(self):
+        return self._imgMetadata.copy()
+
     # Getting internal NIfTI data
     def imageData(self):
         return self.image.get_fdata()
@@ -310,7 +310,7 @@ class BidsIncremental:
         return self.image.header
 
     def imageDimensions(self) -> np.ndarray:
-        return self.image.header.get("dim")
+        return self.image.get_fdata().shape
 
     """
     BEGIN BIDS-I ARCHIVE EMULTATION API

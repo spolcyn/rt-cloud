@@ -129,9 +129,11 @@ def validBidsI(sampleNifti1, imageMetadataDict):
                            imageMetadata=imageMetadataDict)
 
 
-# BIDS Archeve with a 3-D image in it
-@pytest.fixture
-def bidsArchive3D(tmpdir, sample3DNifti1, imageMetadataDict):
+def archiveWithImage(image, metadata: dict, tmpdir):
+    """
+    Create an archive on disk by hand with the provided image and metadata
+    """
+
     # Create ensured empty directory
     while True:
         id = str(randint(0, 1e6))
@@ -140,24 +142,36 @@ def bidsArchive3D(tmpdir, sample3DNifti1, imageMetadataDict):
             rootPath.mkdir()
             break
 
-    logger.debug("Root path: %s", rootPath)
-
     # Create the archive by hand, with default readme and dataset description
-    Path(rootPath, 'README').write_text("README for" + bidsArchive3D.__name__)
+    Path(rootPath, 'README').write_text("README for pytest")
     Path(rootPath, 'dataset_description.json') \
         .write_text(json.dumps(DEFAULT_DATASET_DESC))
 
-    # Write the nifti 3D image & metadata
+    # Write the nifti image & metadata
     dataPath = Path(rootPath, "sub-01", "ses-01", "func")
-    logger.debug("Data path: %s", dataPath)
     dataPath.mkdir(parents=True)
-    filenamePrefix = "sub-01_task-story_bold"
-    nib.save(sample3DNifti1, Path(dataPath, filenamePrefix + '.nii'))
+
+    filenamePrefix = "sub-01_ses-01_task-story_run-1_bold"
+    imagePath = Path(dataPath, filenamePrefix + '.nii')
     metadataPath = Path(dataPath, filenamePrefix + '.json')
-    metadataPath.write_text(json.dumps(imageMetadataDict))
+
+    nib.save(image, imagePath)
+    metadataPath.write_text(json.dumps(metadata))
 
     # Create an archive from the directory and return it
     return BidsArchive(rootPath)
+
+
+# BIDS Archive with a 3-D image in it
+@pytest.fixture(scope='function')
+def bidsArchive3D(tmpdir, sample3DNifti1, imageMetadataDict):
+    return archiveWithImage(sample3DNifti1, imageMetadataDict, tmpdir)
+
+
+# BIDS Archive with a 4-D image in it
+@pytest.fixture(scope='function')
+def bidsArchive4D(tmpdir, sampleNifti1, imageMetadataDict):
+    return archiveWithImage(sampleNifti1, imageMetadataDict, tmpdir)
 
 
 """ END BIDS RELATED FIXTURES """
