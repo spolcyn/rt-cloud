@@ -22,7 +22,6 @@ from rtCommon.bidsCommon import (
     BidsFileExtension,
     BIDS_FILE_PATTERN,
     BIDS_DIR_PATH_PATTERN,
-    BIDS_VERSION,
     DATASET_DESC_REQ_FIELDS,
     DEFAULT_DATASET_DESC,
     loadBidsEntities,
@@ -310,13 +309,13 @@ class BidsIncremental:
         return self._imgMetadata.copy()
 
     # Getting internal NIfTI data
-    def imageData(self):
+    def imageData(self) -> np.ndarray:
         return self.image.get_fdata()
 
     def imageHeader(self):
         return self.image.header
 
-    def imageDimensions(self) -> np.ndarray:
+    def imageDimensions(self) -> tuple:
         return self.image.get_fdata().shape
 
     """

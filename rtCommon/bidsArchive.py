@@ -187,6 +187,9 @@ class BidsArchive:
     def __str__(self):
         return str(self.dataset)
 
+    def subjects(self):
+        return self.dataset.data.get_subjects()
+
     def isEmpty(self) -> bool:
         return (self.dataset is None)
 

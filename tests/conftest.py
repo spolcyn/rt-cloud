@@ -126,7 +126,7 @@ def imageMetadata(dicomImageMetadata):
     return meta
 
 
-@pytest.fixture
+@pytest.fixture(scope='function')
 def validBidsI(sampleNifti1, imageMetadata):
     """
     Constructs and returns a known-valid BIDS-Incremental using known metadata.

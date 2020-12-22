@@ -94,7 +94,6 @@ def testSequenceAppend(bidsArchive4D, validBidsI, imageMetadata):
     for i in range(NUM_APPENDS):
         bidsArchive4D.appendIncremental(validBidsI)
 
-    # TODO(spolcyn): Make the image path not hardcoded
     imagePath = bids_build_path(imageMetadata, BIDS_FILE_PATH_PATTERN) + '.nii'
     image = bidsArchive4D.getImage(imagePath)
 
@@ -105,8 +104,13 @@ def testSequenceAppend(bidsArchive4D, validBidsI, imageMetadata):
 
 # Test appending a new subject (and thus creating a new directory) to a
 # non-empty BIDS Archive
-def testAppendNewSubject(bidsArchive4D):
-    pass
+def testAppendNewSubject(bidsArchive4D, validBidsI):
+    preSubjects = bidsArchive4D.subjects()
+
+    validBidsI.setMetadataField("subject", "02")
+    bidsArchive4D.appendIncremental(validBidsI)
+
+    assert len(bidsArchive4D.subjects()) == len(preSubjects) + 1
 
 
 # Test stripping an image off from a BIDS archive works as expected
