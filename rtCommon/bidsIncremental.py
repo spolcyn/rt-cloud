@@ -21,6 +21,7 @@ from rtCommon.bidsCommon import (
     BidsEntityKeys as bek,
     BidsFileExtension,
     BIDS_FILE_PATTERN,
+    BIDS_DIR_PATH_PATTERN,
     BIDS_VERSION,
     DATASET_DESC_REQ_FIELDS,
     DEFAULT_DATASET_DESC,
@@ -88,18 +89,23 @@ class BidsIncremental:
         protocolName = self._imgMetadata.get("ProtocolName", None)
         self._imgMetadata.update(self.metadataFromProtocolName(protocolName))
 
-        # TODO(spolcyn): Make a more extensible approach using PyBids entities
-        # to putting values into the proper types
-        if self._imgMetadata.get("run", None):
-            self._imgMetadata["run"] = int(self._imgMetadata["run"])
-
         missingImageMetadata = self.missingImageMetadata(self._imgMetadata)
         if missingImageMetadata != []:
             raise ValidationError(f"Image metadata missing required fields: "
                                   f"{missingImageMetadata}")
 
         # Validate or modify fields that are now known to exist
+        # TODO(spolcyn): Make a more extensible approach using PyBids entities
+        # to putting values into the proper types
+        if self._imgMetadata.get("run", None):
+            self._imgMetadata["run"] = int(self._imgMetadata["run"])
+
         self._imgMetadata["TaskName"] = self._imgMetadata["task"]
+
+        # Ensure datatype is set, assume functional
+        if self._imgMetadata.get("datatype", None) is None:
+            self._imgMetadata["datatype"] = "func"
+
         fieldToMaxValue = {"RepetitionTime": 100, "EchoTime": 1}
         for field, maxValue in fieldToMaxValue.items():
             value = int(self._imgMetadata[field])
@@ -296,9 +302,8 @@ class BidsIncremental:
 
     # Additional methods to access internal BIDS-I data
     def dataType(self):
-        # TODO(spolcyn): Support anatomical imaging too
         """ func or anat """
-        return "func"
+        return self._imgMetadata.get("datatype")
 
     @property
     def imgMetadata(self):
@@ -380,16 +385,7 @@ class BidsIncremental:
             /sub-01/ses-2011/anat/
 
         """
-        pathElements = ['sub-' + self.getMetadataField("subject")]
-
-        session = self.getMetadataField("session")
-        if session:
-            pathElements.append('ses-' + session)
-
-        pathElements.append(self.dataType())
-        pathElements.append("")
-
-        return os.path.join("/", *pathElements)
+        return bids_build_path(self._imgMetadata, BIDS_DIR_PATH_PATTERN) + '/'
 
     def writeToArchive(self, datasetRoot: str):
         """
