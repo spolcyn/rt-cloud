@@ -3,9 +3,14 @@ import os
 import shutil
 import tempfile
 
+from bids.layout.writing import build_path as bids_build_path
+
 from rtCommon import bidsLibrary as bl
 from rtCommon.bidsArchive import BidsArchive
-from rtCommon import bidsCommon
+from rtCommon.bidsCommon import (
+    BIDS_FILE_PATH_PATTERN,
+    isNiftiPath,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +41,7 @@ def archiveHasMetadata(archive: BidsArchive, metadata: dict) -> bool:
     bidsLayout = archive.dataset.data
     archiveMetadata = {}
     for f in bidsLayout.get(return_type='filename'):
-        if not bidsCommon.isNiftiPath(f):
+        if not isNiftiPath(f):
             continue
         archiveMetadata.update(bidsLayout.get_metadata(f, include_entities=True))
     for key, value in archiveMetadata.items():
@@ -59,30 +64,30 @@ def archiveHasMetadata(archive: BidsArchive, metadata: dict) -> bool:
 
 
 # Test images are correctly appended to an empty archive
-def testEmptyArchiveAppend(validBidsI, imageMetadataDict, tmpdir):
+def testEmptyArchiveAppend(validBidsI, imageMetadata, tmpdir):
     # Create in root with no BIDS-I, then append to make non-empty archive
     datasetRoot = os.path.join(tmpdir, testEmptyArchiveAppend.__name__)
     archive = BidsArchive(datasetRoot)
     archive.appendIncremental(validBidsI)
     assert not archive.isEmpty()
 
-    assert archiveHasMetadata(archive, imageMetadataDict)
+    assert archiveHasMetadata(archive, imageMetadata)
 
 
 # Test images are correctly appended to an archive with just a 3-D image in it
-def test3DAppend(bidsArchive3D, validBidsI, imageMetadataDict):
+def test3DAppend(bidsArchive3D, validBidsI, imageMetadata):
     bidsArchive3D.appendIncremental(validBidsI)
-    assert archiveHasMetadata(bidsArchive3D, imageMetadataDict)
+    assert archiveHasMetadata(bidsArchive3D, imageMetadata)
 
 
 # Test images are correctly appended to an archive with a single 4-D image in it
-def test4DAppend(bidsArchive4D, validBidsI, imageMetadataDict):
+def test4DAppend(bidsArchive4D, validBidsI, imageMetadata):
     bidsArchive4D.appendIncremental(validBidsI)
-    assert archiveHasMetadata(bidsArchive4D, imageMetadataDict)
+    assert archiveHasMetadata(bidsArchive4D, imageMetadata)
 
 
 # Test images are correctly appended to an archive with a 4-D sequence in it
-def testSequenceAppend(bidsArchive4D, validBidsI, imageMetadataDict):
+def testSequenceAppend(bidsArchive4D, validBidsI, imageMetadata):
     NUM_APPENDS = 2
     BIDSI_LENGTH = 2
 
@@ -90,11 +95,13 @@ def testSequenceAppend(bidsArchive4D, validBidsI, imageMetadataDict):
         bidsArchive4D.appendIncremental(validBidsI)
 
     # TODO(spolcyn): Make the image path not hardcoded
-    image = bidsArchive4D.getImage("/sub-01/ses-01/func/sub-01_ses-01_task-story_run-1_bold.nii")
+    imagePath = bids_build_path(imageMetadata, BIDS_FILE_PATH_PATTERN) + '.nii'
+    image = bidsArchive4D.getImage(imagePath)
+
     assert len(image.get_fdata().shape) == 4
     assert image.get_fdata().shape[3] == (BIDSI_LENGTH * (1 + NUM_APPENDS))
 
-    assert archiveHasMetadata(bidsArchive4D, imageMetadataDict)
+    assert archiveHasMetadata(bidsArchive4D, imageMetadata)
 
 # Test appending a new subject (and thus creating a new directory) to a
 # non-empty BIDS Archive

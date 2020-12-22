@@ -31,10 +31,10 @@ BIDS_FILE_PATTERN = "sub-{subject}[_ses-{session}]_task-{task}" \
                      "[_rec-{reconstruction}][_run-{run}][_echo-{echo}]" \
                      "[_recording-{recording}][_part-{part}]" \
                      "_{suffix<bold|cbv|sbref|events>}" \
-                     "{extension<.nii|.json|.tsv>}"
+                     "[{extension<.nii|.json|.tsv>}]"
 
 # Pattern for creating BIDS archive directory path
-BIDS_DIR_PATH_PATTERN = "/sub-{subject}[/ses-{session}]/{datatype<func>|func}"
+BIDS_DIR_PATH_PATTERN = "sub-{subject}[/ses-{session}]/{datatype<func>|func}"
 
 # Pattern for creating full path of BIDS file relative to archive root
 BIDS_FILE_PATH_PATTERN = BIDS_DIR_PATH_PATTERN + '/' + BIDS_FILE_PATTERN

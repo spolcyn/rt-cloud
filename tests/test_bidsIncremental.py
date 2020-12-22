@@ -7,77 +7,82 @@ import shutil
 import tempfile
 
 from bids_validator import BIDSValidator
+from bids.layout.writing import build_path as bids_build_path
 import pytest
 import nibabel as nib
 import numpy as np
 
 from rtCommon.bidsIncremental import BidsIncremental
-from rtCommon.bidsCommon import BidsFileExtension as BidsFileExtension
+from rtCommon.bidsCommon import (
+    BidsFileExtension,
+    BIDS_DIR_PATH_PATTERN,
+    BIDS_FILE_PATTERN
+)
 from rtCommon.errors import ValidationError
 
 logger = logging.getLogger(__name__)
 
 
 # Test that construction fails for image metadata missing required fields
-def testInvalidConstruction(sample2DNifti, sampleNifti1, imageMetadataDict):
+def testInvalidConstruction(sample2DNifti, sampleNifti1, imageMetadata):
     # Test empty image
     with pytest.raises(ValidationError):
         BidsIncremental(image=None,
-                        imageMetadata=imageMetadataDict)
+                        imageMetadata=imageMetadata)
 
     # Test 2-D image
     with pytest.raises(ValidationError):
         BidsIncremental(image=sample2DNifti,
-                        imageMetadata=imageMetadataDict)
+                        imageMetadata=imageMetadata)
 
     # Test incomplete metadata
-    protocolName = imageMetadataDict.pop("ProtocolName")
+    protocolName = imageMetadata.pop("ProtocolName")
     for key in BidsIncremental.REQUIRED_IMAGE_METADATA:
-        value = imageMetadataDict.pop(key)
+        value = imageMetadata.pop(key)
 
-        assert not BidsIncremental.isCompleteImageMetadata(imageMetadataDict)
+        assert not BidsIncremental.isCompleteImageMetadata(imageMetadata)
         with pytest.raises(ValidationError):
             BidsIncremental(image=sampleNifti1,
-                            imageMetadata=imageMetadataDict)
+                            imageMetadata=imageMetadata)
 
-        imageMetadataDict[key] = value
-    imageMetadataDict["ProtocolName"] = protocolName
+        imageMetadata[key] = value
+    imageMetadata["ProtocolName"] = protocolName
 
     # Test too-large repetition and echo times
     for key in ["RepetitionTime", "EchoTime"]:
-        original = imageMetadataDict[key]
-        imageMetadataDict[key] = 10**6
+        original = imageMetadata[key]
+        imageMetadata[key] = 10**6
 
         with pytest.raises(ValidationError):
             BidsIncremental(image=sampleNifti1,
-                            imageMetadata=imageMetadataDict)
+                            imageMetadata=imageMetadata)
 
-        imageMetadataDict[key] = original
+        imageMetadata[key] = original
 
     # Test non-image object
     with pytest.raises(ValidationError):
         BidsIncremental(image="definitely not an image",
-                        imageMetadata=imageMetadataDict)
+                        imageMetadata=imageMetadata)
 
 
 # Test that valid arguments produce a BIDS incremental
 def testValidConstruction(sample3DNifti1, sample3DNifti2,
-                          sampleNifti1, sampleNifti2, imageMetadataDict):
+                          sampleNifti1, sampleNifti2, imageMetadata):
     # 3-D should be promoted to 4-D
-    assert BidsIncremental(sample3DNifti1, imageMetadataDict) is not None
-    assert BidsIncremental(sample3DNifti2, imageMetadataDict) is not None
+    assert BidsIncremental(sample3DNifti1, imageMetadata) is not None
+    assert BidsIncremental(sample3DNifti2, imageMetadata) is not None
 
     # Both Nifti1 and Nifti2 images should work
-    assert BidsIncremental(sampleNifti1, imageMetadataDict) is not None
-    assert BidsIncremental(sampleNifti2, imageMetadataDict) is not None
+    assert BidsIncremental(sampleNifti1, imageMetadata) is not None
+    assert BidsIncremental(sampleNifti2, imageMetadata) is not None
 
     # If the metadata provides a RepetitionTime or EchoTime that works without
     # adjustment, the construction should still work
     repetitionTimeKey = "RepetitionTime"
-    original = imageMetadataDict[repetitionTimeKey]
-    imageMetadataDict[repetitionTimeKey] = 1.5
-    assert BidsIncremental(sampleNifti1, imageMetadataDict) is not None
-    imageMetadataDict[repetitionTimeKey] = original
+    original = imageMetadata[repetitionTimeKey]
+    imageMetadata[repetitionTimeKey] = 1.5
+    assert BidsIncremental(sampleNifti1, imageMetadata) is not None
+    imageMetadata[repetitionTimeKey] = original
 
 
 # Test that the string output of the BIDS-I is as expected
@@ -91,56 +96,56 @@ def testStringOutput(validBidsI):
 
 
 # Test that equality comparison is as expected
-def testEquals(sampleNifti1, sample3DNifti1, imageMetadataDict):
+def testEquals(sampleNifti1, sample3DNifti1, imageMetadata):
     # Test images with different headers
-    assert BidsIncremental(sampleNifti1, imageMetadataDict) != \
-           BidsIncremental(sample3DNifti1, imageMetadataDict)
+    assert BidsIncremental(sampleNifti1, imageMetadata) != \
+           BidsIncremental(sample3DNifti1, imageMetadata)
 
     # Test images with the same header, but different data
     newData = 1.1 * sampleNifti1.get_fdata()
     reversedNifti1 = nib.Nifti1Image(newData, sampleNifti1.affine,
                                      header=sampleNifti1.header)
-    assert BidsIncremental(sampleNifti1, imageMetadataDict) != \
-        BidsIncremental(reversedNifti1, imageMetadataDict)
+    assert BidsIncremental(sampleNifti1, imageMetadata) != \
+        BidsIncremental(reversedNifti1, imageMetadata)
 
     # Test different image metadata
-    modifiedImageMetadata = deepcopy(imageMetadataDict)
+    modifiedImageMetadata = deepcopy(imageMetadata)
     modifiedImageMetadata["subject"] = "newSubject"
-    assert BidsIncremental(sampleNifti1, imageMetadataDict) != \
+    assert BidsIncremental(sampleNifti1, imageMetadata) != \
            BidsIncremental(sampleNifti1, modifiedImageMetadata)
 
     # Test different dataset metadata
     datasetMeta1 = {"Name": "Dataset_1", "BIDSVersion": "1.0"}
     datasetMeta2 = {"Name": "Dataset_2", "BIDSVersion": "2.0"}
-    assert BidsIncremental(sampleNifti1, imageMetadataDict, datasetMeta1) != \
-           BidsIncremental(sampleNifti1, imageMetadataDict, datasetMeta2)
+    assert BidsIncremental(sampleNifti1, imageMetadata, datasetMeta1) != \
+           BidsIncremental(sampleNifti1, imageMetadata, datasetMeta2)
 
 
 # Test that image metadata dictionaries can be properly created by the class
-def testImageMetadataDictCreation(imageMetadataDict):
+def testImageMetadataDictCreation(imageMetadata):
     createdDict = BidsIncremental.createImageMetadataDict(
-                    subject=imageMetadataDict["subject"],
-                    task=imageMetadataDict["task"],
-                    suffix=imageMetadataDict["suffix"],
-                    repetitionTime=imageMetadataDict["RepetitionTime"],
-                    echoTime=imageMetadataDict["EchoTime"])
+                    subject=imageMetadata["subject"],
+                    task=imageMetadata["task"],
+                    suffix=imageMetadata["suffix"],
+                    repetitionTime=imageMetadata["RepetitionTime"],
+                    echoTime=imageMetadata["EchoTime"])
 
     for key in createdDict.keys():
-        assert createdDict.get(key) == imageMetadataDict.get(key)
+        assert createdDict.get(key) == imageMetadata.get(key)
 
 
 # Test that invalid dataset.json fields are rejected and valid ones are accepted
-def testDatasetMetadata(sampleNifti1, imageMetadataDict):
+def testDatasetMetadata(sampleNifti1, imageMetadata):
     # Test invalid dataset metadata
     with pytest.raises(ValidationError):
         BidsIncremental(image=sampleNifti1,
-                        imageMetadata=imageMetadataDict,
+                        imageMetadata=imageMetadata,
                         datasetMetadata={"random_field": "doesnt work"})
 
     # Test valid dataset metadata
     dataset_name = "Test dataset"
     bidsInc = BidsIncremental(image=sampleNifti1,
-                              imageMetadata=imageMetadataDict,
+                              imageMetadata=imageMetadata,
                               datasetMetadata={"Name": dataset_name,
                                                "BIDSVersion": "1.0"})
     assert bidsInc.datasetName() == dataset_name
@@ -148,7 +153,7 @@ def testDatasetMetadata(sampleNifti1, imageMetadataDict):
 
 # Test that extracting metadata from the BIDS-I using its provided API returns
 # the correct values
-def testMetadataOutput(validBidsI, imageMetadataDict):
+def testMetadataOutput(validBidsI, imageMetadata):
     with pytest.raises(ValueError):
         validBidsI.getMetadataField("InvalidEntityName", strict=True)
     assert validBidsI.getMetadataField("InvalidEntityName") is None
@@ -157,9 +162,9 @@ def testMetadataOutput(validBidsI, imageMetadataDict):
     assert validBidsI.dataType() == "func"
     # Entities
     for entity in ['subject', 'task']:
-        assert validBidsI.getMetadataField(entity) == imageMetadataDict[entity]
+        assert validBidsI.getMetadataField(entity) == imageMetadata[entity]
     # Suffix
-    assert validBidsI.suffix() == imageMetadataDict["suffix"]
+    assert validBidsI.suffix() == imageMetadata["suffix"]
 
 
 # Test that the BIDS-I properly parses BIDS fields present in a DICOM
@@ -253,19 +258,14 @@ def testQueryNifti(validBidsI):
 
 # Test that constructing BIDS-compatible filenames from internal metadata
 # returns the correct filenames
-def testFilenameConstruction(validBidsI, imageMetadataDict):
+def testFilenameConstruction(validBidsI, imageMetadata):
     """
     General format:
     sub-<label>[_ses-<label>]_task-<label>[_acq-<label>] [_ce-<label>]
         [_dir-<label>][_rec-<label>][_run-<index>]
         [_echo-<index>]_<contrast_label >.ext
     """
-    baseFilename = "sub-{sub}_ses-{ses}_task-{task}_run-{run}_{suf}".format(
-        sub=imageMetadataDict["subject"],
-        ses=imageMetadataDict["session"],
-        task=imageMetadataDict["task"],
-        run=imageMetadataDict["run"],
-        suf=imageMetadataDict["suffix"])
+    baseFilename = bids_build_path(imageMetadata, BIDS_FILE_PATTERN)
 
     assert baseFilename + ".nii" == \
         validBidsI.makeBidsFileName(BidsFileExtension.IMAGE)
@@ -275,14 +275,9 @@ def testFilenameConstruction(validBidsI, imageMetadataDict):
 
 # Test that the hypothetical path for the BIDS-I if it were in an archive is
 # correct based on the metadata within it
-def testArchivePathConstruction(validBidsI, imageMetadataDict):
-    session = "01"
-    validBidsI.setMetadataField("session", session)
-
+def testArchivePathConstruction(validBidsI, imageMetadata):
     assert validBidsI.dataDirPath() == \
-        "/sub-{}/ses-{}/func/".format(imageMetadataDict["subject"], session)
-
-    validBidsI.removeMetadataField("session")
+        '/' + bids_build_path(imageMetadata, BIDS_DIR_PATH_PATTERN) + '/'
 
 
 # Test that writing the BIDS-I to disk returns a properly formatted BIDS archive

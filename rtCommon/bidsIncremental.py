@@ -385,7 +385,8 @@ class BidsIncremental:
             /sub-01/ses-2011/anat/
 
         """
-        return bids_build_path(self._imgMetadata, BIDS_DIR_PATH_PATTERN) + '/'
+        path = bids_build_path(self._imgMetadata, BIDS_DIR_PATH_PATTERN)
+        return f"/{path}/"
 
     def writeToArchive(self, datasetRoot: str):
         """

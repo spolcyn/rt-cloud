@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 from random import randint
 
+from bids.layout.writing import build_path as bids_build_path
 import nibabel as nib
 import pydicom
 import pytest
@@ -22,8 +23,13 @@ from rtCommon.imageHandling import (
     readNifti
 )
 from rtCommon.bidsArchive import BidsArchive
+from rtCommon.bidsCommon import (
+    DEFAULT_DATASET_DESC,
+    BIDS_DIR_PATH_PATTERN,
+    BIDS_FILE_PATTERN,
+    BIDS_FILE_PATH_PATTERN,
+)
 from rtCommon.bidsIncremental import BidsIncremental
-from rtCommon.bidsCommon import DEFAULT_DATASET_DESC
 import rtCommon.bidsLibrary as bl
 
 logger = logging.getLogger(__name__)
@@ -109,7 +115,7 @@ def sampleNifti2():
 
 
 @pytest.fixture
-def imageMetadataDict(dicomImageMetadata):
+def imageMetadata(dicomImageMetadata):
     """
     Dictionary with all required metadata to construct a BIDS-Incremental, as
     well as extra metadata extracted from the test DICOM image.
@@ -121,12 +127,12 @@ def imageMetadataDict(dicomImageMetadata):
 
 
 @pytest.fixture
-def validBidsI(sampleNifti1, imageMetadataDict):
+def validBidsI(sampleNifti1, imageMetadata):
     """
     Constructs and returns a known-valid BIDS-Incremental using known metadata.
     """
     return BidsIncremental(image=sampleNifti1,
-                           imageMetadata=imageMetadataDict)
+                           imageMetadata=imageMetadata)
 
 
 def archiveWithImage(image, metadata: dict, tmpdir):
@@ -148,10 +154,10 @@ def archiveWithImage(image, metadata: dict, tmpdir):
         .write_text(json.dumps(DEFAULT_DATASET_DESC))
 
     # Write the nifti image & metadata
-    dataPath = Path(rootPath, "sub-01", "ses-01", "func")
+    dataPath = Path(rootPath, bids_build_path(metadata, BIDS_DIR_PATH_PATTERN))
     dataPath.mkdir(parents=True)
 
-    filenamePrefix = "sub-01_ses-01_task-story_run-1_bold"
+    filenamePrefix = bids_build_path(metadata, BIDS_FILE_PATTERN)
     imagePath = Path(dataPath, filenamePrefix + '.nii')
     metadataPath = Path(dataPath, filenamePrefix + '.json')
 
@@ -164,14 +170,14 @@ def archiveWithImage(image, metadata: dict, tmpdir):
 
 # BIDS Archive with a 3-D image in it
 @pytest.fixture(scope='function')
-def bidsArchive3D(tmpdir, sample3DNifti1, imageMetadataDict):
-    return archiveWithImage(sample3DNifti1, imageMetadataDict, tmpdir)
+def bidsArchive3D(tmpdir, sample3DNifti1, imageMetadata):
+    return archiveWithImage(sample3DNifti1, imageMetadata, tmpdir)
 
 
 # BIDS Archive with a 4-D image in it
 @pytest.fixture(scope='function')
-def bidsArchive4D(tmpdir, sampleNifti1, imageMetadataDict):
-    return archiveWithImage(sampleNifti1, imageMetadataDict, tmpdir)
+def bidsArchive4D(tmpdir, sampleNifti1, imageMetadata):
+    return archiveWithImage(sampleNifti1, imageMetadata, tmpdir)
 
 
 """ END BIDS RELATED FIXTURES """
