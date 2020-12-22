@@ -80,6 +80,7 @@ def test4DAppend(bidsArchive4D, validBidsI, imageMetadataDict):
     bidsArchive4D.appendIncremental(validBidsI)
     assert archiveHasMetadata(bidsArchive4D, imageMetadataDict)
 
+
 # Test images are correctly appended to an archive with a 4-D sequence in it
 def testSequenceAppend(bidsArchive4D, validBidsI, imageMetadataDict):
     NUM_APPENDS = 2
@@ -98,6 +99,7 @@ def testSequenceAppend(bidsArchive4D, validBidsI, imageMetadataDict):
 # Test appending a new subject (and thus creating a new directory) to a
 # non-empty BIDS Archive
 def testAppendNewSubject(bidsArchive4D):
+    pass
 
 
 # Test stripping an image off from a BIDS archive works as expected

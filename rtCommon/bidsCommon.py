@@ -25,6 +25,14 @@ DEFAULT_DATASET_DESC = {"Name": "bidsi_dataset",
                         "Authors": ["The RT-Cloud Authors",
                                     "The Dataset Author"]}
 
+# Pattern for creating BIDS filenames from all compatible fMRI entities
+BIDS_FILE_PATTERN = "sub-{subject}[_ses-{session}]_task-{task}" \
+                     "[_acq-{acquisition}][_ce-{ceagent}][_dir-{direction}]" \
+                     "[_rec-{reconstruction}][_run-{run}][_echo-{echo}]" \
+                     "[_recording-{recording}][_part-{part}]" \
+                     "_{suffix<bold|cbv|sbref|events>}" \
+                     "{extension<.nii|.json|.tsv>}"
+
 
 # Valid extensions for various file types in the BIDS format
 class BidsFileExtension(Enum):

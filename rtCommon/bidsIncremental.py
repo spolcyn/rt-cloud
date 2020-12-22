@@ -11,6 +11,7 @@ import json
 import os
 import re
 
+from bids.layout.writing import build_path as bids_build_path
 import logging
 import nibabel as nib
 import numpy as np
@@ -19,6 +20,7 @@ from rtCommon.errors import ValidationError
 from rtCommon.bidsCommon import (
     BidsEntityKeys as bek,
     BidsFileExtension,
+    BIDS_FILE_PATTERN,
     BIDS_VERSION,
     DATASET_DESC_REQ_FIELDS,
     DEFAULT_DATASET_DESC,
@@ -337,26 +339,16 @@ class BidsIncremental:
         Return:
             Filename from metadata according to BIDS standard 1.4.1.
         """
-        # (entity, required in path) tuples to specify the order and necessity
-        # of how entities appear in the pathname
-        entitiesToAdd = ['subject', 'session', 'task', 'acquisition',
-                         'contrast enhancing agent', 'phase-encoding direction',
-                         'reconstruction', 'run', 'echo']
+        entities = {key: self._imgMetadata[key] for key in self.ENTITIES.keys()
+                    if self._imgMetadata.get(key, None) is not None}
 
-        entityPairs = []
-        for entity in entitiesToAdd:
-            value = self.getMetadataField(entity)
-            if value:
-                shortName = self.ENTITIES.get(entity).get(bek.ENTITY.value)
-                entityPairs.append(shortName + '-' + str(value))
-
-        # Add contrast label
+        entities["extension"] = extension.value
         if extension == BidsFileExtension.EVENTS:
-            entityPairs.append("events")
+            entities["suffix"] = "events"
         else:
-            entityPairs.append(self.suffix())
+            entities["suffix"] = self.imgMetadata["suffix"]
 
-        return '_'.join(entityPairs) + extension.value
+        return bids_build_path(entities, BIDS_FILE_PATTERN)
 
     def imageFileName(self) -> str:
         return self.makeBidsFileName(BidsFileExtension.IMAGE)
