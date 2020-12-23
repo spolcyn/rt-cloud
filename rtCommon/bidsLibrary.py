@@ -5,11 +5,8 @@ bidsLibrary.py
 Implement conversion between DICOM, BIDS-Incremental (BIDS-I), and BIDS.
 
 -----------------------------------------------------------------------------"""
-import json
 import logging
-import os
 
-from bids.layout import parse_file_entities
 import nibabel as nib
 import numpy as np
 import pydicom
@@ -17,7 +14,7 @@ import pydicom
 from rtCommon.bidsIncremental import BidsIncremental
 import rtCommon.bidsCommon as bidsCommon
 from rtCommon.errors import ValidationError
-from rtCommon.imageHandling import convertDicomImgToNifti, readNifti
+from rtCommon.imageHandling import convertDicomImgToNifti
 
 logger = logging.getLogger(__name__)
 
@@ -212,5 +209,3 @@ def verifyMetadataMatch(meta1: dict, meta2: dict):
             return False
 
     return True
-
-

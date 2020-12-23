@@ -114,5 +114,6 @@ def testAppendNewSubject(bidsArchive4D, validBidsI):
 
 
 # Test stripping an image off from a BIDS archive works as expected
-def testStripImage():
+def testStripImage(bidsArchive4D):
+
     pass
