@@ -1,12 +1,13 @@
 import logging
 import os
-import shutil
 import tempfile
 
+import numpy as np
 from bids.layout.writing import build_path as bids_build_path
 
 from rtCommon import bidsLibrary as bl
 from rtCommon.bidsArchive import BidsArchive
+from rtCommon.bidsIncremental import BidsIncremental
 from rtCommon.bidsCommon import (
     BIDS_FILE_PATH_PATTERN,
     isNiftiPath,
@@ -56,7 +57,7 @@ def archiveHasMetadata(archive: BidsArchive, metadata: dict) -> bool:
         elif int(niftiValue) / 1000 == value:
             continue
         else:
-            logger.debug(f"{niftiValue}, type {type(niftiValue)} != {value}, " \
+            logger.debug(f"{niftiValue}, type {type(niftiValue)} != {value}, "
                          f"type {type(value)}")
             return False
 
@@ -97,10 +98,11 @@ def testSequenceAppend(bidsArchive4D, validBidsI, imageMetadata):
     imagePath = bids_build_path(imageMetadata, BIDS_FILE_PATH_PATTERN) + '.nii'
     image = bidsArchive4D.getImage(imagePath)
 
-    assert len(image.get_fdata().shape) == 4
-    assert image.get_fdata().shape[3] == (BIDSI_LENGTH * (1 + NUM_APPENDS))
+    shape = image.header.get_data_shape()
+    assert len(shape) == 4 and shape[3] == (BIDSI_LENGTH * (1 + NUM_APPENDS))
 
     assert archiveHasMetadata(bidsArchive4D, imageMetadata)
+
 
 # Test appending a new subject (and thus creating a new directory) to a
 # non-empty BIDS Archive
@@ -114,6 +116,20 @@ def testAppendNewSubject(bidsArchive4D, validBidsI):
 
 
 # Test stripping an image off from a BIDS archive works as expected
-def testStripImage(bidsArchive4D):
+def testStripImage(bidsArchive4D, sample3DNifti1, sampleNifti1, imageMetadata):
+    """
+    def stripIncremental(self, subject: str, session: str, task: str,
+                         suffix: str, dataType: str, imageIndex: int = 0,
+                         otherLabels: dict = None):
+    """
+    incremental = bidsArchive4D.stripIncremental(
+                    imageMetadata["subject"],
+                    imageMetadata["session"],
+                    imageMetadata["task"],
+                    imageMetadata["suffix"],
+                    "func")
+
+    reference = BidsIncremental(sample3DNifti1, imageMetadata)
+    assert incremental == reference
 
     pass
