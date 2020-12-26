@@ -11,6 +11,7 @@ import os
 import re
 
 import pydicom
+import numpy as np
 import yaml
 
 from rtCommon.errors import ValidationError
@@ -74,6 +75,16 @@ def loadBidsEntities() -> dict:
             entities[name] = valueDict
 
         return entities
+
+
+def getNiftiData(image) -> np.ndarray:
+    """
+    Nibabel exposes a get_fdata() method, but this converts all the data to
+    floats. Since our Nifti files are often converted from DICOM's, which store
+    data in signed or unsigned ints, treating the data as float can cause issues
+    when comparing images or re-writing a Nifti read in from disk.
+    """
+    return np.asanyarray(image.dataobj, dtype=np.int16)
 
 
 def isNiftiPath(path: str) -> bool:

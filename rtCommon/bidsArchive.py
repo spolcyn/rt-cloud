@@ -19,6 +19,7 @@ import nibabel as nib
 
 from rtCommon.bidsCommon import (
     BIDS_DIR_PATH_PATTERN,
+    getNiftiData,
     isJsonPath,
     isNiftiPath,
 )
@@ -267,8 +268,8 @@ class BidsArchive:
                 raise ValidationError("Image metadata failed validation!")
 
             # Build 4-D NIfTI if archive has 3-D, concat to 4-D otherwise
-            incrementalData = incremental.image.get_fdata()
-            archiveData = archiveImg.get_fdata()
+            incrementalData = getNiftiData(incremental.image)
+            archiveData = getNiftiData(archiveImg)
 
             # If archive has something that isn't 3-D or 4-D, not sure what to
             # do with it

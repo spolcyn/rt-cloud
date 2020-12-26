@@ -28,6 +28,7 @@ from rtCommon.bidsCommon import (
     BIDS_DIR_PATH_PATTERN,
     BIDS_FILE_PATTERN,
     BIDS_FILE_PATH_PATTERN,
+    getNiftiData
 )
 from rtCommon.bidsIncremental import BidsIncremental
 import rtCommon.bidsLibrary as bl
@@ -83,10 +84,10 @@ def dicomImageMetadata(dicomImage):
 @pytest.fixture
 def sample2DNifti():
     nifti = readNifti(test_3DNifti1Path)
-    newData = nifti.get_fdata().flatten()
+    newData = getNiftiData(nifti)
     # max positive value of 2 byte, signed short used in Nifti header for
     # storing dimension information
-    newData = newData[:2**15 - 1]
+    newData = newData.flatten()[:2**15 - 1]
     return nib.Nifti1Image(newData, nifti.affine)
 
 

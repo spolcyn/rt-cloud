@@ -235,8 +235,10 @@ def testRemoveMetadata(validBidsI):
 # return the correct values
 def testQueryNifti(validBidsI):
     # Image data
-    assert np.array_equal(validBidsI.imageData(),
-                          validBidsI.image.get_fdata())
+    queriedData = validBidsI.imageData()
+    exactData = getNiftiData(validBidsI.image)
+    assert np.array_equal(queriedData, exactData), "{} elements not equal" \
+        .format(np.sum(np.where(queriedData != exactData)))
 
     # Header Data
     queriedHeader = validBidsI.imageHeader()
