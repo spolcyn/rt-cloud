@@ -24,6 +24,7 @@ from rtCommon.bidsCommon import (
     BIDS_DIR_PATH_PATTERN,
     DATASET_DESC_REQ_FIELDS,
     DEFAULT_DATASET_DESC,
+    getNiftiData,
     loadBidsEntities,
 )
 
@@ -57,29 +58,28 @@ class BidsIncremental:
 
         """
 
-        """ Validate and store image """
+        """ Do basic input validation """
+        # IMAGE
         if image is None or \
                 (type(image) is not nib.Nifti1Image and
                  type(image) is not nib.Nifti2Image):
             raise ValidationError("Image must be NIBabel Nifti 1 or 2 image, "
                                   "got type %s" % str(type(image)))
+        # IMAGE METADATA
+        missingImageMetadata = self.missingImageMetadata(imageMetadata)
+        if missingImageMetadata != []:
+            raise ValidationError(f"Image metadata missing required fields: "
+                                  f"{missingImageMetadata}")
 
-        # Remove singleton dimensions
-        self.image = nib.funcs.squeeze_image(image)
+        # DATASET METADATA
+        if datasetMetadata is not None:
+            missingFields = [field for field in DATASET_DESC_REQ_FIELDS
+                             if datasetMetadata.get(field, None) is None]
+            if missingFields:
+                raise ValidationError(
+                    f"Dataset description needs: {str(missingFields)}")
 
-        # Validate dimensions
-        imageShape = self.image.get_fdata().shape
-        if len(imageShape) < 3:
-            raise ValidationError("Image must have at least 3 dimensions")
-        elif len(imageShape) == 3:
-            # Add one singleton dimension to make image 4-D
-            newData = np.expand_dims(self.image.get_fdata(), -1)
-            self.image = self.image.__class__(newData, self.image.affine,
-                                              self.image.header)
-
-        assert len(self.imageDimensions()) == 4
-
-        """ Validate and store image metadata """
+        """ Store image metadata """
         # Ensure BIDS-I has an independent metadata dictionary
         # TODO(spolcyn): Replace this deepcopy with building a dictionary of
         # BIDSEntity types from PyBids
@@ -87,11 +87,6 @@ class BidsIncremental:
 
         protocolName = self._imgMetadata.get("ProtocolName", None)
         self._imgMetadata.update(self.metadataFromProtocolName(protocolName))
-
-        missingImageMetadata = self.missingImageMetadata(self._imgMetadata)
-        if missingImageMetadata != []:
-            raise ValidationError(f"Image metadata missing required fields: "
-                                  f"{missingImageMetadata}")
 
         # Validate or modify fields that are now known to exist
         # TODO(spolcyn): Make a more extensible approach using PyBids entities
@@ -107,31 +102,44 @@ class BidsIncremental:
 
         fieldToMaxValue = {"RepetitionTime": 100, "EchoTime": 1}
         for field, maxValue in fieldToMaxValue.items():
-            value = int(self._imgMetadata[field])
+            value = int(self.getMetadataField(field))
             if value <= maxValue:
                 continue
             elif value / 1000.0 <= maxValue:
                 logger.info(f"{field} has value {value} > {maxValue}. Assuming "
                             f"value is in milliseconds, converting to seconds.")
                 value = value / 1000.0
-                self._imgMetadata[field] = value
+                self.setMetadataField(field, value)
             else:
                 raise ValidationError(f"{field} has value {value}, which is "
                                       f"greater than {maxValue} even if "
                                       f"interpreted as milliseconds.")
 
-        """ Validate dataset metadata or create default values """
+        """ Store dataset metadata """
         if datasetMetadata is None:
             self.datasetMetadata = DEFAULT_DATASET_DESC
         else:
-            missingFields = [field for field in DATASET_DESC_REQ_FIELDS
-                             if datasetMetadata.get(field) is None]
+            self.datasetMetadata = deepcopy(datasetMetadata)
 
-            if missingFields:
-                raise ValidationError(
-                    f"Dataset description needs: {str(missingFields)}")
-            else:
-                self.datasetMetadata = deepcopy(datasetMetadata)
+        """ Validate and store image """
+        # Remove singleton dimensions
+        self.image = nib.funcs.squeeze_image(image)
+
+        # Validate dimensions, upgrading if needed
+        imageShape = self.imageDimensions()
+        if len(imageShape) < 3:
+            raise ValidationError("Image must have at least 3 dimensions")
+        elif len(imageShape) == 3:
+            # Add one singleton dimension to make image 4-D
+            newData = np.expand_dims(self.image.dataobj, -1)
+            self.image = self.image.__class__(newData, self.image.affine,
+                                              self.image.header)
+            # Update the time dimension size with the TR length
+            self.imageHeader["pixdim"][4] = \
+                self.getMetadataField("RepetitionTime")
+
+        self._imageDataArray = getNiftiData(self.image)
+        assert len(self.imageDimensions()) == 4
 
         # Configure additional required BIDS metadata and files
         self.readme = "Generated BIDS-Incremental Dataset from RT-Cloud"
@@ -151,16 +159,38 @@ class BidsIncremental:
         # to disk, then diffing the files that they produce; however, this could
         # be quite slow
         if self.image.header != other.image.header:
+            logger.debug("Image headers didn't match")
+            difference = {key: [self.image.header[key], other.image.header[key]]
+                                for key in self.image.header
+                                if key in other.image.header and
+                                not np.array_equal(self.image.header[key],
+                                                   other.image.header[key])
+                          }
+            logger.debug("Image header difference: %s", difference)
             return False
-        if not np.array_equal(self.image.get_fdata(), other.image.get_fdata()):
+
+        if not self.imageDimensions() == other.imageDimensions():
+            logger.debug("Image dimensions didn't match")
+            return False
+
+        if not np.array_equal(self.imageData(), other.imageData()):
+            logger.debug("Image data didn't match")
+            logger.debug("Difference count: %d", np.sum(self.imageData() !=
+                                                        other.imageData()))
+            np.savetxt('self.txt', self.imageData().flatten())
+            np.savetxt('other.txt', other.imageData().flatten())
+            logger.debug("Differences: %s", np.where(self.imageData() !=
+                                                     other.imageData()))
             return False
 
         # Compare image metadata
         if not self._imgMetadata == other._imgMetadata:
+            logger.debug("Image metadata didn't match")
             return False
 
         # Compare dataset metadata
         if not self.datasetMetadata == other.datasetMetadata:
+            logger.debug("Dataset metadata didn't match")
             return False
 
         return True
@@ -310,13 +340,14 @@ class BidsIncremental:
 
     # Getting internal NIfTI data
     def imageData(self) -> np.ndarray:
-        return self.image.get_fdata()
+        return self._imageDataArray
 
+    @property
     def imageHeader(self):
         return self.image.header
 
     def imageDimensions(self) -> tuple:
-        return self.image.get_fdata().shape
+        return self.imageHeader.get_data_shape()
 
     """
     BEGIN BIDS-I ARCHIVE EMULTATION API

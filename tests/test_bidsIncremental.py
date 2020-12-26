@@ -14,6 +14,7 @@ import numpy as np
 
 from rtCommon.bidsIncremental import BidsIncremental
 from rtCommon.bidsCommon import (
+    getNiftiData,
     BidsFileExtension,
     BIDS_DIR_PATH_PATTERN,
     BIDS_FILE_PATTERN
@@ -102,7 +103,7 @@ def testEquals(sampleNifti1, sample3DNifti1, imageMetadata):
            BidsIncremental(sample3DNifti1, imageMetadata)
 
     # Test images with the same header, but different data
-    newData = 1.1 * sampleNifti1.get_fdata()
+    newData = 2 * getNiftiData(sampleNifti1)
     reversedNifti1 = nib.Nifti1Image(newData, sampleNifti1.affine,
                                      header=sampleNifti1.header)
     assert BidsIncremental(sampleNifti1, imageMetadata) != \
@@ -241,7 +242,7 @@ def testQueryNifti(validBidsI):
         .format(np.sum(np.where(queriedData != exactData)))
 
     # Header Data
-    queriedHeader = validBidsI.imageHeader()
+    queriedHeader = validBidsI.imageHeader
     exactHeader = validBidsI.image.header
 
     # Compare full image header
