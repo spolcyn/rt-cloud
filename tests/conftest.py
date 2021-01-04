@@ -43,12 +43,12 @@ logger = logging.getLogger(__name__)
 @pytest.fixture
 def dicomMetadataSample() -> dict:
     sample = {}
-    sample["ContentDate"] = "20190521"
-    sample["ContentTime"] = "131107.519000"
+    sample["ContentDate"] = "20190219"
+    sample["ContentTime"] = "124758.653000"
     sample["RepetitionTime"] = 1500
     sample["StudyDescription"] = "Norman_Mennen^5516_greenEyes"
     sample["StudyInstanceUID"] = \
-        "1.3.12.2.1107.5.2.19.45031.30000019051622212064900000040"
+        "1.3.12.2.1107.5.2.19.45031.30000019021215313940500000046"
 
     return sample
 
@@ -121,7 +121,7 @@ def imageMetadata(dicomImageMetadata):
     Dictionary with all required metadata to construct a BIDS-Incremental, as
     well as extra metadata extracted from the test DICOM image.
     """
-    meta = {'subject': '01', 'task': 'story', 'suffix': 'bold',  # REQUIRED
+    meta = {'subject': '01', 'task': 'faces', 'suffix': 'bold',  # REQUIRED
             'session': '01', 'run': '1'}  # EXTRACTED
     meta.update(dicomImageMetadata)  # DICOM
     return meta

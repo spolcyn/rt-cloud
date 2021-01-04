@@ -5,8 +5,8 @@ import os
 
 """ Imaging inputs """
 test_inputDir = 'test_input'
-test_dicomFile = '001_000005_000100.dcm'
-test_dicomTruncFile = 'trunc_001_000005_000100.dcm'
+test_dicomFile = '001_000013_000005.dcm'
+test_dicomTruncFile = 'trunc_001_000013_000005.dcm'
 test_nifti1_3DFile = 'test_input_3d_func_ses-01_task-story_run-01_bold.nii'
 test_nifti2_3DFile = 'test_input_3d_nifti2_func_ses-01_task-story_run-01_bold.nii'
 test_nifti1_4DFile = 'test_input_4d_func_ses-01_task-story_run-01_bold.nii'
