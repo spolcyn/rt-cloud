@@ -121,12 +121,17 @@ def verifyNiftiHeadersMatch(img1: nib.Nifti1Image, img2: nib.Nifti1Image):
             else:
                 return False
 
-    # For pixel dimensions, 0 and 1 are equivalent -- any value in a higher
-    # index than the number of dimensions specified in the 'dim' field will be
-    # ignored, and a 0 in a non-ignored index makes no sense
+    # For pixel dimensions, the values 0 and 1 are equivalent -- any value in a
+    # higher index than the number of dimensions specified in the 'dim' field
+    # will be ignored, and a 0 in a non-ignored index makes no sense
+    field = "dim"
+    dimensions1 = header1.get(field)[0]
+    dimensions2 = header2.get(field)[0]
+    nDimensionsToCompare = min(dimensions1, dimensions2)
+
     field = "pixdim"
-    v1 = header1.get(field)
-    v2 = header2.get(field)
+    v1 = header1.get(field)[0:nDimensionsToCompare + 1]
+    v2 = header2.get(field)[0:nDimensionsToCompare + 1]
     v1 = np.where(v1 == 0, 1, v1)
     v2 = np.where(v2 == 0, 1, v2)
 
