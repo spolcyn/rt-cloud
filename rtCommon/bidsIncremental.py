@@ -8,8 +8,10 @@ different applications.
 -----------------------------------------------------------------------------"""
 from copy import deepcopy
 import json
+from operator import eq as opeq
 import os
 import re
+from typing import Any, Callable
 
 from bids.layout.writing import build_path as bids_build_path
 import logging
@@ -154,43 +156,63 @@ class BidsIncremental:
             self.version)
 
     def __eq__(self, other):
+        def symmetricDifference(d1: dict, d2: dict,
+                                equal: Callable[[Any, Any], bool],
+                                ) -> dict:
+            sharedKeys = d1.keys() & d2.keys()
+            difference = {key: [d1[key], d2[key]]
+                          for key in sharedKeys
+                          if not equal(d1[key], d2[key])}
+
+            d1OnlyKeys = d1.keys() - d2.keys()
+            difference.update({key: [d1[key], None] for key in d1OnlyKeys})
+
+            d2OnlyKeys = d2.keys() - d1.keys()
+            difference.update({key: [None, d2[key]] for key in d2OnlyKeys})
+
+            return difference
+
+        def reportDifference(valueName: str, d1: dict, d2: dict,
+                             equal: Callable[[Any, Any], bool] = opeq) -> None:
+            logger.debug(valueName + " didn't match")
+            difference = symmetricDifference(d1, d2, equal)
+            logger.debug(valueName + " difference: %s", difference)
+
         # Compare images
-        # TODO(spolcyn): Could do this more completely by save()'ing the images
-        # to disk, then diffing the files that they produce; however, this could
-        # be quite slow
         if self.image.header != other.image.header:
-            logger.debug("Image headers didn't match")
-            difference = {key: [self.image.header[key], other.image.header[key]]
-                                for key in self.image.header
-                                if key in other.image.header and
-                                not np.array_equal(self.image.header[key],
-                                                   other.image.header[key])
-                          }
-            logger.debug("Image header difference: %s", difference)
+            reportDifference("Image headers",
+                             dict(self.image.header),
+                             dict(other.image.header),
+                             np.array_equal)
             return False
 
-        if not self.imageDimensions() == other.imageDimensions():
+        if self.imageDimensions() != other.imageDimensions():
             logger.debug("Image dimensions didn't match")
-            return False
-
-        if not np.array_equal(self.imageData(), other.imageData()):
-            logger.debug("Image data didn't match")
-            logger.debug("Difference count: %d", np.sum(self.imageData() !=
-                                                        other.imageData()))
-            np.savetxt('self.txt', self.imageData().flatten())
-            np.savetxt('other.txt', other.imageData().flatten())
-            logger.debug("Differences: %s", np.where(self.imageData() !=
-                                                     other.imageData()))
+            logger.debug("Dimension 1: %s | Dimension 2: %s",
+                         self.imageDimensions(), other.imageDimensions())
             return False
 
         # Compare image metadata
-        if not self._imgMetadata == other._imgMetadata:
-            logger.debug("Image metadata didn't match")
+        if self._imgMetadata != other._imgMetadata:
+            reportDifference("Image metadata",
+                             self._imgMetadata,
+                             other._imgMetadata,
+                             np.array_equal)
             return False
 
         # Compare dataset metadata
-        if not self.datasetMetadata == other.datasetMetadata:
-            logger.debug("Dataset metadata didn't match")
+        if self.datasetMetadata != other.datasetMetadata:
+            reportDifference("Dataset metadata",
+                             self.datasetMetadata,
+                             other.datasetMetadata)
+            return False
+
+        if not np.array_equal(self.imageData(), other.imageData()):
+            differences = self.imageData() != other.imageData()
+            logger.debug("Image data didn't match")
+            logger.debug("Difference count: %d (%f%%)",
+                         np.sum(differences),
+                         np.sum(differences) / np.size(differences) * 100.0)
             return False
 
         return True
