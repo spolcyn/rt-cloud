@@ -132,7 +132,7 @@ class BidsIncremental:
         self.image = nib.funcs.squeeze_image(image)
 
         # Validate dimensions, upgrading if needed
-        imageShape = self.imageDimensions()
+        imageShape = self.imageDimensions
         if len(imageShape) < 3:
             raise ValidationError("Image must have at least 3 dimensions")
         elif len(imageShape) == 3:
@@ -146,7 +146,7 @@ class BidsIncremental:
             self.getMetadataField("RepetitionTime")
 
         self._imageDataArray = getNiftiData(self.image)
-        assert len(self.imageDimensions()) == 4
+        assert len(self.imageDimensions) == 4
 
         # Configure additional required BIDS metadata and files
         self.readme = "Generated BIDS-Incremental Dataset from RT-Cloud"
@@ -156,7 +156,7 @@ class BidsIncremental:
 
     def __str__(self):
         return "Image shape: {}; # Metadata Keys: {}; Version: {}".format(
-            self.imageDimensions(),
+            self.imageDimensions,
             len(self._imgMetadata.keys()),
             self.version)
 
@@ -191,10 +191,10 @@ class BidsIncremental:
                              np.array_equal)
             return False
 
-        if self.imageDimensions() != other.imageDimensions():
+        if self.imageDimensions != other.imageDimensions:
             logger.debug("Image dimensions didn't match")
             logger.debug("Dimension 1: %s | Dimension 2: %s",
-                         self.imageDimensions(), other.imageDimensions())
+                         self.imageDimensions, other.imageDimensions)
             return False
 
         # Compare image metadata
@@ -373,6 +373,7 @@ class BidsIncremental:
     def imageHeader(self):
         return self.image.header
 
+    @property
     def imageDimensions(self) -> tuple:
         return self.imageHeader.get_data_shape()
 
@@ -478,7 +479,6 @@ class BidsIncremental:
             # TODO(spolcyn): Write out internally used entities, like "subject",
             # "task", and "run" in a suitable way (likely not at all, since
             # they're included in the filename)
-
             json.dump(self._imgMetadata, metadataFile, sort_keys=True, indent=4)
 
         # TODO(spolcyn): Make events file correspond correctly to the imaging

@@ -88,7 +88,7 @@ def testValidConstruction(sample3DNifti1, sample3DNifti2,
 
 # Test that the string output of the BIDS-I is as expected
 def testStringOutput(validBidsI):
-    imageShape = str(validBidsI.imageDimensions())
+    imageShape = str(validBidsI.imageDimensions)
     keyCount = len(validBidsI._imgMetadata.keys())
     version = validBidsI.version
     assert str(validBidsI) == f"Image shape: {imageShape}; " \
