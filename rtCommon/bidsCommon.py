@@ -80,11 +80,11 @@ def loadBidsEntities() -> dict:
 def getNiftiData(image) -> np.ndarray:
     """
     Nibabel exposes a get_fdata() method, but this converts all the data to
-    floats. Since our Nifti files are often converted from DICOM's, which store
+    float64. Since our Nifti files are often converted from DICOM's, which store
     data in signed or unsigned ints, treating the data as float can cause issues
     when comparing images or re-writing a Nifti read in from disk.
     """
-    return np.asanyarray(image.dataobj, dtype=np.int16)
+    return np.asanyarray(image.dataobj, dtype=image.dataobj.dtype)
 
 
 def isNiftiPath(path: str) -> bool:

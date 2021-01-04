@@ -102,6 +102,10 @@ class BidsIncremental:
         if self._imgMetadata.get("datatype", None) is None:
             self._imgMetadata["datatype"] = "func"
 
+        # TODO(spolcyn): Correctly extract slice timing from the metadata
+        # TODO(spolcyn): Support volume timing and associated fields
+        self._imgMetadata["SliceTiming"] = list(np.linspace(0.0, 1.5, 27))
+
         fieldToMaxValue = {"RepetitionTime": 100, "EchoTime": 1}
         for field, maxValue in fieldToMaxValue.items():
             value = int(self.getMetadataField(field))
@@ -133,12 +137,13 @@ class BidsIncremental:
             raise ValidationError("Image must have at least 3 dimensions")
         elif len(imageShape) == 3:
             # Add one singleton dimension to make image 4-D
-            newData = np.expand_dims(self.image.dataobj, -1)
+            newData = np.expand_dims(getNiftiData(self.image), -1)
             self.image = self.image.__class__(newData, self.image.affine,
                                               self.image.header)
-            # Update the time dimension size with the TR length
-            self.imageHeader["pixdim"][4] = \
-                self.getMetadataField("RepetitionTime")
+
+        # Update the time dimension size with the TR length
+        self.imageHeader["pixdim"][4] = \
+            self.getMetadataField("RepetitionTime")
 
         self._imageDataArray = getNiftiData(self.image)
         assert len(self.imageDimensions()) == 4
@@ -473,9 +478,6 @@ class BidsIncremental:
             # TODO(spolcyn): Write out internally used entities, like "subject",
             # "task", and "run" in a suitable way (likely not at all, since
             # they're included in the filename)
-            # TODO(spolcyn): Remove after done testing for full bids validation
-            # TODO(spolcyn): Support volume timing and associated fields
-            self._imgMetadata["SliceTiming"] = list(np.linspace(0.0, 1.5, 27))
 
             json.dump(self._imgMetadata, metadataFile, sort_keys=True, indent=4)
 
