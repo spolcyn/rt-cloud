@@ -293,6 +293,7 @@ class BidsArchive:
         # the archive; create new Nifti file within the archive
         elif self.pathExists(dataDirPath) or makePath is True:
             logger.debug("Image doesn't exist in archive, creating")
+
             self.addImage(incremental.image, imgPath)
             self.addMetadata(incremental.imgMetadata, metadataPath)
 
@@ -333,7 +334,7 @@ class BidsArchive:
 
         """
         metadata = {'subject': subject, 'session': session, 'task': task,
-                    'suffix': suffix, 'datatype'=datatype}
+                    'suffix': suffix, 'datatype': dataType}
         archivePath = bids_build_path(metadata, BIDS_DIR_PATH_PATTERN)
 
         matchingFilePaths = self.getFilesForPath(archivePath)
@@ -398,10 +399,12 @@ class BidsArchive:
                 return None
             return BidsIncremental(image, subject, task, suffix, metadata)
         else:
-            slices = nib.funcs.four_to_three(image)[imageIndex]
+            slices = nib.four_to_three(image)
+
             if imageIndex < len(slices):
                 newImage = slices[imageIndex]
+                return BidsIncremental(newImage, metadata)
             else:
                 logger.error("Image index %d is too large for NIfTI volume of \
                               length %d", imageIndex, len(slices))
-            return BidsIncremental(newImage, subject, task, suffix, metadata)
+                return None

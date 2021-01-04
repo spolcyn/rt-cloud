@@ -2,6 +2,7 @@ import logging
 import os
 import tempfile
 
+import nibabel as nib
 import numpy as np
 from bids.layout.writing import build_path as bids_build_path
 
@@ -10,6 +11,8 @@ from rtCommon.bidsArchive import BidsArchive
 from rtCommon.bidsIncremental import BidsIncremental
 from rtCommon.bidsCommon import (
     BIDS_FILE_PATH_PATTERN,
+    BidsFileExtension,
+    getNiftiData,
     isNiftiPath,
 )
 
@@ -70,9 +73,14 @@ def testEmptyArchiveAppend(validBidsI, imageMetadata, tmpdir):
     datasetRoot = os.path.join(tmpdir, testEmptyArchiveAppend.__name__)
     archive = BidsArchive(datasetRoot)
     archive.appendIncremental(validBidsI)
-    assert not archive.isEmpty()
 
+    assert not archive.isEmpty()
     assert archiveHasMetadata(archive, imageMetadata)
+
+    imagePath = bids_build_path(imageMetadata, BIDS_FILE_PATH_PATTERN) + \
+        BidsFileExtension.IMAGE.value
+    imageFromArchive = archive.getImage(imagePath)
+    assert validBidsI == BidsIncremental(imageFromArchive, imageMetadata)
 
 
 # Test images are correctly appended to an archive with just a 3-D image in it
@@ -80,11 +88,29 @@ def test3DAppend(bidsArchive3D, validBidsI, imageMetadata):
     bidsArchive3D.appendIncremental(validBidsI)
     assert archiveHasMetadata(bidsArchive3D, imageMetadata)
 
+    # Check data
+    imagePath = bids_build_path(imageMetadata, BIDS_FILE_PATH_PATTERN) + \
+        BidsFileExtension.IMAGE.value
+    imageFromArchive = bidsArchive3D.getImage(imagePath)
+    splitImage = nib.Nifti1Image(getNiftiData(imageFromArchive)[..., 1:],
+                                 imageFromArchive.affine,
+                                 imageFromArchive.header)
+    assert validBidsI == BidsIncremental(splitImage, imageMetadata)
+
 
 # Test images are correctly appended to an archive with a single 4-D image in it
 def test4DAppend(bidsArchive4D, validBidsI, imageMetadata):
     bidsArchive4D.appendIncremental(validBidsI)
     assert archiveHasMetadata(bidsArchive4D, imageMetadata)
+
+    # Check data
+    imagePath = bids_build_path(imageMetadata, BIDS_FILE_PATH_PATTERN) + \
+        BidsFileExtension.IMAGE.value
+    imageFromArchive = bidsArchive4D.getImage(imagePath)
+    splitImage = nib.Nifti1Image(getNiftiData(imageFromArchive)[..., 2:],
+                                 imageFromArchive.affine,
+                                 imageFromArchive.header)
+    assert validBidsI == BidsIncremental(splitImage, imageMetadata)
 
 
 # Test images are correctly appended to an archive with a 4-D sequence in it
@@ -103,6 +129,15 @@ def testSequenceAppend(bidsArchive4D, validBidsI, imageMetadata):
 
     assert archiveHasMetadata(bidsArchive4D, imageMetadata)
 
+    # Check data
+    imagePath = bids_build_path(imageMetadata, BIDS_FILE_PATH_PATTERN) + \
+        BidsFileExtension.IMAGE.value
+    imageFromArchive = bidsArchive4D.getImage(imagePath)
+    splitImage = nib.Nifti1Image(getNiftiData(imageFromArchive)[..., 2:4],
+                                 imageFromArchive.affine,
+                                 imageFromArchive.header)
+    assert validBidsI == BidsIncremental(splitImage, imageMetadata)
+
 
 # Test appending a new subject (and thus creating a new directory) to a
 # non-empty BIDS Archive
@@ -114,14 +149,18 @@ def testAppendNewSubject(bidsArchive4D, validBidsI):
 
     assert len(bidsArchive4D.subjects()) == len(preSubjects) + 1
 
+    # Check data
+    imagePath = bids_build_path(validBidsI.imgMetadata, BIDS_FILE_PATH_PATTERN) + \
+        BidsFileExtension.IMAGE.value
+    imageFromArchive = bidsArchive4D.getImage(imagePath)
+    splitImage = nib.Nifti1Image(getNiftiData(imageFromArchive),
+                                 imageFromArchive.affine,
+                                 imageFromArchive.header)
+    assert validBidsI == BidsIncremental(splitImage, validBidsI.imgMetadata)
+
 
 # Test stripping an image off from a BIDS archive works as expected
 def testStripImage(bidsArchive4D, sample3DNifti1, sampleNifti1, imageMetadata):
-    """
-    def stripIncremental(self, subject: str, session: str, task: str,
-                         suffix: str, dataType: str, imageIndex: int = 0,
-                         otherLabels: dict = None):
-    """
     incremental = bidsArchive4D.stripIncremental(
                     imageMetadata["subject"],
                     imageMetadata["session"],
@@ -131,5 +170,3 @@ def testStripImage(bidsArchive4D, sample3DNifti1, sampleNifti1, imageMetadata):
 
     reference = BidsIncremental(sample3DNifti1, imageMetadata)
     assert incremental == reference
-
-    pass
