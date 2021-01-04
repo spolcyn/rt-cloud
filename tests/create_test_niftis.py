@@ -17,8 +17,8 @@ from common import (
     test_dicomPath,
     test_3DNifti1Path,
     test_3DNifti2Path,
-    test_nifti1Path,
-    test_nifti2Path
+    test_4DNifti1Path,
+    test_4DNifti2Path
 )
 from rtCommon.imageHandling import convertDicomFileToNifti
 
@@ -29,7 +29,7 @@ Delete existing existing NIfTI files with target names to avoid dcm2niix
 creating lots of duplicates with different names
 """
 for path in [test_3DNifti1Path, test_3DNifti2Path,
-             test_nifti1Path, test_nifti2Path]:
+             test_4DNifti1Path, test_4DNifti2Path]:
     if os.path.exists(path):
         logging.info("Removing existing: %s", path)
         os.remove(path)
@@ -38,36 +38,111 @@ for path in [test_3DNifti1Path, test_3DNifti2Path,
 Create base 3D NIfTI1 file all others are created from
 """
 convertDicomFileToNifti(test_dicomPath, test_3DNifti1Path)
-nifti1 = nib.load(test_3DNifti1Path)
+nifti1_3D = nib.load(test_3DNifti1Path)
 
 # Extract the TR time, then eliminate pixel dimension data past 3rd dimension,
 # as a 3D image really should only have 3D data, and having more can complicate
 # later comparisons.
 
-# this currently works with dcm2niix and the DICOM we have, but is not robust
-TR_TIME = nifti1.header['pixdim'][4]
-nifti1.header['pixdim'][4:] = 1
-nib.save(nifti1, test_3DNifti1Path)
+# these values are correct for the DICOM we have, but is not robust
+TR_TIME = nifti1_3D.header['pixdim'][4]
+nifti1_3D.header['pixdim'][4:] = 1
+
+# TODO(spolcyn): Take datatype, units, etc from the DICOM directly
+nifti1_3D.header['datatype'] = 512  # unsigned short -
+nifti1_3D.header['xyzt_units'] = 2  # just millimeters
+nib.save(nifti1_3D, test_3DNifti1Path)
 
 """
 Create NIfTI2 version of 3D base
 """
-nifti2 = nib.Nifti2Image(nifti1.dataobj, nifti1.affine, nifti1.header)
-nib.save(nifti2, test_3DNifti2Path)
+nifti2_3D = nib.Nifti2Image(nifti1_3D.dataobj,
+                            nifti1_3D.affine,
+                            nifti1_3D.header)
+nib.save(nifti2_3D, test_3DNifti2Path)
 
 """
 Create 4D Nifti1 from base 3D Nifti1
 """
-nifti1_4D = nib.concat_images([nifti1, nifti1])
+
+
+# This method copied *exactly* from nibabel/funcs.py, except for adding the
+# dtype specifier to the out_data = np.empty(...) line
+def concat_images_patched(images, check_affines=True, axis=None):
+    r""" Concatenate images in list to single image, along specified dimension
+    Parameters
+    ----------
+    images : sequence
+       sequence of ``SpatialImage`` or filenames of the same dimensionality\s
+    check_affines : {True, False}, optional
+       If True, then check that all the affines for `images` are nearly
+       the same, raising a ``ValueError`` otherwise.  Default is True
+    axis : None or int, optional
+        If None, concatenates on a new dimension.  This requires all images to
+        be the same shape.  If not None, concatenates on the specified
+        dimension.  This requires all images to be the same shape, except on
+        the specified dimension.
+    Returns
+    -------
+    concat_img : ``SpatialImage``
+       New image resulting from concatenating `images` across last
+       dimension
+    """
+    images = [nib.load(img) if not hasattr(img, 'get_data')
+              else img for img in images]
+    n_imgs = len(images)
+    if n_imgs == 0:
+        raise ValueError("Cannot concatenate an empty list of images.")
+    img0 = images[0]
+    affine = img0.affine
+    header = img0.header
+    klass = img0.__class__
+    shape0 = img0.shape
+    n_dim = len(shape0)
+    if axis is None:
+        # collect images in output array for efficiency
+        out_shape = (n_imgs, ) + shape0
+        out_data = np.empty(out_shape, dtype=img0.header.get_data_dtype())
+    else:
+        # collect images in list for use with np.concatenate
+        out_data = [None] * n_imgs
+    # Get part of shape we need to check inside loop
+    idx_mask = np.ones((n_dim,), dtype=bool)
+    if axis is not None:
+        idx_mask[axis] = False
+    masked_shape = np.array(shape0)[idx_mask]
+    for i, img in enumerate(images):
+        if len(img.shape) != n_dim:
+            raise ValueError(f'Image {i} has {len(img.shape)} dimensions, image 0 has {n_dim}')
+        if not np.all(np.array(img.shape)[idx_mask] == masked_shape):
+            raise ValueError(f'shape {img.shape} for image {i} not compatible with '
+                             f'first image shape {shape0} with axis == {axis}')
+        if check_affines and not np.all(img.affine == affine):
+            raise ValueError(f'Affine for image {i} does not match affine for first image')
+        # Do not fill cache in image if it is empty
+        out_data[i] = np.asanyarray(img.dataobj)
+
+    if axis is None:
+        out_data = np.rollaxis(out_data, 0, out_data.ndim)
+    else:
+        out_data = np.concatenate(out_data, axis=axis)
+
+    return klass(out_data, affine, header)
+
+
+nifti1_4D = concat_images_patched([nifti1_3D, nifti1_3D])
+
 nifti1_4D.header["pixdim"][4] = TR_TIME
-nib.save(nifti1_4D, test_nifti1Path)
+nifti1_4D.header["datatype"] = 512  # TODO(spolcyn): Set this according to DICOM
+
+nib.save(nifti1_4D, test_4DNifti1Path)
 
 """
 Create 4D Nifti2 from 3D Nifti2
 """
-nifti2_4D = nib.concat_images([nifti2, nifti2])
+nifti2_4D = nib.concat_images([nifti2_3D, nifti2_3D])
 nifti2_4D.header["pixdim"][4] = TR_TIME
-nib.save(nifti2_4D, test_nifti2Path)
+nib.save(nifti2_4D, test_4DNifti2Path)
 
 """
 Validate created Nifti files by comparing headers and data that should match
@@ -82,7 +157,23 @@ NIFTI2_CHANGED_FIELDS = ['sizeof_hdr', 'magic']
 
 def headersMatch(niftiA, niftiB,
                  ignoredKeys: list = [],
-                 specialFieldToHandler: dict = {}) -> bool:
+                 specialHandlers: dict = {}) -> bool:
+    """
+    Verify that two NIfTI headers match. A list of keys to ignore can be
+    provided (e.g., if comparing NIfTI1 and NIfTI2) or special handlers for
+    particular keys (e.g., a 3D NIfTI and 4D NIfTI that should match in the
+    first 3 dimensions of their shape).
+
+    Args:
+        niftiA, niftiB: NiBabel NIfTI images with headers
+        ignoredKeys: Keys to skip comparing
+        specialHandlers: Map of field name to function taking two arguments,
+            returning 'true' if the values should be considered equal, false
+            otherwise.
+
+    Returns:
+        True if the headers are equal, false otherwise.
+    """
     header1 = niftiA.header
     header2 = niftiB.header
 
@@ -101,8 +192,8 @@ def headersMatch(niftiA, niftiB,
                     np.allclose(v1, v2, atol=0.0, equal_nan=True):
                 continue
             # If key is special and handler returns true, continue
-            elif key in specialFieldToHandler and \
-                    specialFieldToHandler[key](v1, v2):
+            elif key in specialHandlers and \
+                    specialHandlers[key](v1, v2):
                 continue
             else:
                 logging.info("--------------------\n"
@@ -136,21 +227,34 @@ ignoredKeys = NIFTI2_REMOVED_FIELDS + NIFTI2_CHANGED_FIELDS
 errorString = "{} for Nifti1 3D and Nifti2 3D did not match"
 
 assert type(nib.load(test_3DNifti2Path)) is nib.Nifti2Image
-assert headersMatch(nifti1, nifti2, ignoredKeys=ignoredKeys), \
+assert headersMatch(nifti1_3D, nifti2_3D, ignoredKeys=ignoredKeys), \
     errorString.format("Headers")
-assert dataMatch(nifti1, nifti2), errorString.format("Image data")
+assert dataMatch(nifti1_3D, nifti2_3D), errorString.format("Image data")
 
 """ 4D Nifti1 """
 errorString = "{} for Nifti1 3D and Nifti1 4D did not match"
 
-assert headersMatch(nifti1, nifti1_4D, specialFieldToHandler=handlerMap3Dto4D),\
+# First compare to the 3D Nifti1 it's derived from
+assert headersMatch(nifti1_3D, nifti1_4D, specialHandlers=handlerMap3Dto4D), \
     errorString.format("Headers")
+assert np.array_equal(nifti1_3D.dataobj, nifti1_4D.dataobj[..., 0])
+assert np.array_equal(nifti1_3D.dataobj, nifti1_4D.dataobj[..., 1])
+
+nifti1_4D_fromdisk = nib.load(test_4DNifti1Path)
+
+# Then ensure the in-memory and on-disk representation are the same
+assert headersMatch(nifti1_4D, nifti1_4D_fromdisk), \
+    errorString.format("Headers")
+assert dataMatch(nifti1_4D, nifti1_4D_fromdisk), \
+    errorString.format("Image data")
 
 """ 4D Nifti2 """
 errorString = "{} for Nifti2 3D and Nifti2 4D did not match"
 
-assert headersMatch(nifti2, nifti2_4D, specialFieldToHandler=handlerMap3Dto4D),\
+assert headersMatch(nifti2_3D, nifti2_4D, specialHandlers=handlerMap3Dto4D), \
     errorString.format("Headers")
+assert np.array_equal(nifti2_3D.dataobj, nifti2_4D.dataobj[..., 0])
+assert np.array_equal(nifti2_3D.dataobj, nifti2_4D.dataobj[..., 1])
 
 """ 4D Nifti1 and 4D Nifti2 data """
 errorString = "{} for Nifti1 4D and Nifti2 4D did not match"

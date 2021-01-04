@@ -15,8 +15,8 @@ from common import (
     test_dicomPath,
     test_3DNifti1Path,
     test_3DNifti2Path,
-    test_nifti1Path,
-    test_nifti2Path
+    test_4DNifti1Path,
+    test_4DNifti2Path
 )
 from rtCommon.imageHandling import (
     readDicomFromFile,
@@ -92,27 +92,27 @@ def sample2DNifti():
 
 
 # 3-D NIfTI 1 image derived from the test DICOM image
-@pytest.fixture
+@pytest.fixture(scope='function')
 def sample3DNifti1():
     return readNifti(test_3DNifti1Path)
 
 
 # 3-D NIfTI 2 image derived from the test DICOM image
-@pytest.fixture
+@pytest.fixture(scope='function')
 def sample3DNifti2():
     return readNifti(test_3DNifti2Path)
 
 
 # 4-D NIfTI 1 image derived from concatting the test DICOM image with itself
-@pytest.fixture
+@pytest.fixture(scope='function')
 def sampleNifti1():
-    return readNifti(test_nifti1Path)
+    return readNifti(test_4DNifti1Path)
 
 
 # 4-D NIfTI 2 image derived from concatting the test DICOM image with itself
-@pytest.fixture
+@pytest.fixture(scope='function')
 def sampleNifti2():
-    return readNifti(test_nifti2Path)
+    return readNifti(test_4DNifti2Path)
 
 
 @pytest.fixture
