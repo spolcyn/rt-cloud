@@ -18,16 +18,22 @@ logger = logging.getLogger(__name__)
 
 
 # Helper for checking data after append
-# TODO(spolcyn): Use this function throughout this test
-# TODO(spolcyn): Create a better name for this function
-def appendDataMatches(archive: BidsArchive, reference: BidsIncremental):
+def appendDataMatches(archive: BidsArchive, reference: BidsIncremental,
+                      startIndex: int = 0, endIndex: int = -1):
     imagePath = bids_build_path(reference.imgMetadata, BIDS_FILE_PATH_PATTERN) \
         + BidsFileExtension.IMAGE.value
     imageFromArchive = archive.getImage(imagePath)
-    appendedImage = nib.Nifti1Image(getNiftiData(imageFromArchive),
+
+    fullImageData = getNiftiData(imageFromArchive)
+    if endIndex == -1:
+        endIndex = len(fullImageData)
+    appendedData = fullImageData[..., startIndex:endIndex]
+
+    appendedImage = nib.Nifti1Image(appendedData,
                                     imageFromArchive.affine,
                                     imageFromArchive.header)
-    assert BidsIncremental(appendedImage, reference.imgMetadata) == reference
+
+    return BidsIncremental(appendedImage, reference.imgMetadata) == reference
 
 
 # Test creating archive without a path
@@ -78,40 +84,21 @@ def testEmptyArchiveAppend(validBidsI, imageMetadata, tmpdir):
     assert not archive.isEmpty()
     assert archiveHasMetadata(archive, imageMetadata)
 
-    imagePath = bids_build_path(imageMetadata, BIDS_FILE_PATH_PATTERN) + \
-        BidsFileExtension.IMAGE.value
-    imageFromArchive = archive.getImage(imagePath)
-    assert validBidsI == BidsIncremental(imageFromArchive, imageMetadata)
+    assert appendDataMatches(archive, validBidsI)
 
 
 # Test images are correctly appended to an archive with just a 3-D image in it
 def test3DAppend(bidsArchive3D, validBidsI, imageMetadata):
     bidsArchive3D.appendIncremental(validBidsI)
     assert archiveHasMetadata(bidsArchive3D, imageMetadata)
-
-    # Check data
-    imagePath = bids_build_path(imageMetadata, BIDS_FILE_PATH_PATTERN) + \
-        BidsFileExtension.IMAGE.value
-    imageFromArchive = bidsArchive3D.getImage(imagePath)
-    splitImage = nib.Nifti1Image(getNiftiData(imageFromArchive)[..., 1:],
-                                 imageFromArchive.affine,
-                                 imageFromArchive.header)
-    assert validBidsI == BidsIncremental(splitImage, imageMetadata)
+    assert appendDataMatches(bidsArchive3D, validBidsI, startIndex=1)
 
 
 # Test images are correctly appended to an archive with a single 4-D image in it
 def test4DAppend(bidsArchive4D, validBidsI, imageMetadata):
     bidsArchive4D.appendIncremental(validBidsI)
     assert archiveHasMetadata(bidsArchive4D, imageMetadata)
-
-    # Check data
-    imagePath = bids_build_path(imageMetadata, BIDS_FILE_PATH_PATTERN) + \
-        BidsFileExtension.IMAGE.value
-    imageFromArchive = bidsArchive4D.getImage(imagePath)
-    splitImage = nib.Nifti1Image(getNiftiData(imageFromArchive)[..., 2:],
-                                 imageFromArchive.affine,
-                                 imageFromArchive.header)
-    assert validBidsI == BidsIncremental(splitImage, imageMetadata)
+    assert appendDataMatches(bidsArchive4D, validBidsI, startIndex=2)
 
 
 # Test images are correctly appended to an archive with a 4-D sequence in it
@@ -129,15 +116,8 @@ def testSequenceAppend(bidsArchive4D, validBidsI, imageMetadata):
     assert len(shape) == 4 and shape[3] == (BIDSI_LENGTH * (1 + NUM_APPENDS))
 
     assert archiveHasMetadata(bidsArchive4D, imageMetadata)
-
-    # Check data
-    imagePath = bids_build_path(imageMetadata, BIDS_FILE_PATH_PATTERN) + \
-        BidsFileExtension.IMAGE.value
-    imageFromArchive = bidsArchive4D.getImage(imagePath)
-    splitImage = nib.Nifti1Image(getNiftiData(imageFromArchive)[..., 2:4],
-                                 imageFromArchive.affine,
-                                 imageFromArchive.header)
-    assert validBidsI == BidsIncremental(splitImage, imageMetadata)
+    assert appendDataMatches(bidsArchive4D, validBidsI,
+                             startIndex=2, endIndex=4)
 
 
 # Test appending a new subject (and thus creating a new directory) to a

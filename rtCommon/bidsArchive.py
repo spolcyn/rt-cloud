@@ -28,10 +28,10 @@ from rtCommon import bidsLibrary as bl
 from rtCommon.errors import ValidationError
 from rtCommon.imageHandling import readNifti
 
-logger = logging.getLogger(__name__)
-
 # Silence future warning
 bc.set_option('extension_initial_dot', True)
+
+logger = logging.getLogger(__name__)
 
 
 class BidsDataset:
