@@ -249,17 +249,133 @@ def testAppendNewSubject(bidsArchive4D, validBidsI):
     assert appendDataMatches(bidsArchive4D, validBidsI)
 
 
-# Test stripping an image off from a BIDS archive works as expected
-def testStripImage(bidsArchive4D, sample3DNifti1, sampleNifti1, imageMetadata):
-    incremental = bidsArchive4D.stripIncremental(
-                    imageMetadata["subject"],
-                    imageMetadata["session"],
-                    imageMetadata["task"],
-                    imageMetadata["suffix"],
-                    "func")
-
-    assert len(incremental.imageDimensions) == 4
-    assert incremental.imageDimensions[-1] == 1
-
+# Test stripping an image off a BIDS archive works as expected
+def testStripImage(bidsArchive3D, bidsArchive4D, sample3DNifti1, sample4DNifti1,
+                   imageMetadata):
+    # 3D Case
     reference = BidsIncremental(sample3DNifti1, imageMetadata)
+    incremental = bidsArchive3D.stripIncremental(
+        imageMetadata["subject"],
+        imageMetadata["session"],
+        imageMetadata["task"],
+        imageMetadata["suffix"],
+        "func")
+
+    # 3D image still results in 4D incremental
+    assert len(incremental.imageDimensions) == 4
+    assert incremental.imageDimensions[3] == 1
+
     assert incremental == reference
+
+    # 4D Case
+    # Both the first and second image in the 4D archive should be identical
+    reference = BidsIncremental(sample3DNifti1, imageMetadata)
+    for index in range(0, 2):
+        incremental = bidsArchive4D.stripIncremental(
+                        imageMetadata["subject"],
+                        imageMetadata["session"],
+                        imageMetadata["task"],
+                        imageMetadata["suffix"],
+                        "func",
+                        sliceIndex=index)
+
+        assert len(incremental.imageDimensions) == 4
+        assert incremental.imageDimensions[3] == 1
+
+        assert incremental == reference
+
+
+# Test stripping image from BIDS archive fails when no matching images are
+# present in the archive
+def testStripNoMatchingImage(bidsArchive4D, imageMetadata):
+    imageMetadata['subject'] = 'notPresent'
+    path = bids_build_path(imageMetadata, BIDS_FILE_PATH_PATTERN)
+    incremental = bidsArchive4D.stripIncremental(
+        imageMetadata["subject"],
+        imageMetadata["session"],
+        imageMetadata["task"],
+        imageMetadata["suffix"],
+        "func")
+
+    assert incremental is None
+
+
+# Test stripping image from BIDS archive raises warning when no matching
+# metadata is present in the archive
+def testStripNoMatchingMetdata(bidsArchive4D, imageMetadata, caplog, tmpdir):
+    # Create path to sidecar metadata file
+    relPath = bids_build_path(imageMetadata, BIDS_FILE_PATH_PATTERN) + \
+        BidsFileExtension.METADATA.value
+
+    absPath = None
+    files = os.listdir(tmpdir)
+    for fname in files:
+        if "dataset" in fname:
+            absPath = Path(tmpdir, fname, relPath)
+            break
+
+    # Remove the sidecar metadata file
+    os.remove(absPath)
+    bidsArchive4D._update()
+
+    # Configure logging to capture the warning
+    caplog.set_level(logging.WARNING, logger="rtCommon.bidsArchive")
+
+    # Without the sidecar metadata, not enough information for an incremental
+    with pytest.raises(ValidationError):
+        incremental = bidsArchive4D.stripIncremental(
+            imageMetadata["subject"],
+            imageMetadata["session"],
+            imageMetadata["task"],
+            imageMetadata["suffix"],
+            "func")
+
+    # Check the logging for the warning message
+    assert "Archive didn't contain any matching metadata" in caplog.text
+
+
+# Test strip with an out-of-bounds slice index for the matching image (could be
+# either non-0 for 3D or beyond bounds for a 4D)
+def testStripSliceIndexOutOfBounds(bidsArchive3D, bidsArchive4D, imageMetadata,
+                                   caplog):
+    # Negative case
+    outOfBoundsIndex = -1
+    incremental = bidsArchive3D.stripIncremental(
+        imageMetadata["subject"],
+        imageMetadata["session"],
+        imageMetadata["task"],
+        imageMetadata["suffix"],
+        "func",
+        sliceIndex=-1)
+
+    assert f"Slice index must be >= 0 (got {outOfBoundsIndex})" in caplog.text
+    assert incremental is None
+
+    # 3D case
+    outOfBoundsIndex = 1
+    incremental = bidsArchive3D.stripIncremental(
+        imageMetadata["subject"],
+        imageMetadata["session"],
+        imageMetadata["task"],
+        imageMetadata["suffix"],
+        "func",
+        sliceIndex=outOfBoundsIndex)
+
+    assert f"Matching image was a 3-D NIfTI; time index {outOfBoundsIndex} " \
+            "too high for a 3-D NIfTI (must be 0)" in caplog.text
+    assert incremental is None
+
+    # 4D case
+    outOfBoundsIndex = 4
+    archiveLength = 2
+    incremental = bidsArchive4D.stripIncremental(
+        imageMetadata["subject"],
+        imageMetadata["session"],
+        imageMetadata["task"],
+        imageMetadata["suffix"],
+        "func",
+        sliceIndex=outOfBoundsIndex)
+
+    assert f"Image index {outOfBoundsIndex} too large for NIfTI volume of " \
+           f"length {archiveLength}" in caplog.text
+    assert incremental is None

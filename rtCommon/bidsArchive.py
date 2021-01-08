@@ -205,6 +205,12 @@ class BidsArchive:
     def __str__(self):
         return str(self.dataset)
 
+    # Used to update the archive if any on-disk changes have happened
+    def _update(self):
+        if self.dataset:
+            self.dataset._updateLayout()
+
+
     @failIfEmpty
     def subjects(self) -> List:
         return self.dataset.data.get_subjects()
@@ -322,8 +328,9 @@ class BidsArchive:
             raise ValidationError("No valid archive path for image and no override \
                                    specified, can't append")
 
+    @failIfEmpty
     def stripIncremental(self, subject: str, session: str, task: str,
-                         suffix: str, dataType: str, imageIndex: int = 0,
+                         suffix: str, dataType: str, sliceIndex: int = 0,
                          otherLabels: dict = None):
         """
         Creates a BIDS-Incremental file from the specified part of the BIDS
@@ -337,7 +344,7 @@ class BidsArchive:
             task: Task to pull data for (for "task-nback", name is "nback")
             suffix: BIDS suffix for file, which is image contrast for fMRI
                 (bold, cbv, or phase)
-            imageIndex: Index of 3_D image to select in a 4-D sequence of images
+            sliceIndex: Index of 3_D image to select in a 4-D sequence of images
             dataType: Type of data to pull (common types: anat, func, dwi, fmap)
                 This string must be the same as the name of the directory
                 containing the image data.
@@ -354,6 +361,10 @@ class BidsArchive:
             "sub-01/ses-2020/func/sub-01_task-nback_bold.nii"
 
         """
+        if sliceIndex < 0:
+            logger.error(f"Slice index must be >= 0 (got {sliceIndex})")
+            return None
+
         metadata = {'subject': subject, 'session': session, 'task': task,
                     'suffix': suffix, 'datatype': dataType}
         archivePath = bids_build_path(metadata, BIDS_DIR_PATH_PATTERN)
@@ -364,14 +375,13 @@ class BidsArchive:
 
         # Fail if no images
         if not niftiPaths:
-            logger.error("Failed to find any matching images in the archive to "
-                         " make a BIDS-I from")
+            logger.error("Archive didn't contain any matching images")
             return None
 
         # Warn if no metadata
         if not metaPaths:
-            logger.warning("Failed to find any matching metadata in the archive"
-                           "to include in a BIDS-I")
+            logger.warning("Archive didn't contain any matching metadata")
+
 
         image = None
 
@@ -414,18 +424,18 @@ class BidsArchive:
                          for provided metadata")
             return None
         elif len(image.dataobj.shape) == 3:
-            if imageIndex != 0:
-                logger.error("Matching image was a 3-D NIfTI; time index %d is"
-                             "too high for a 3-D NIfTI (must be 0)", imageIndex)
+            if sliceIndex != 0:
+                logger.error("Matching image was a 3-D NIfTI; time index %d "
+                             "too high for a 3-D NIfTI (must be 0)", sliceIndex)
                 return None
-            return BidsIncremental(image, subject, task, suffix, metadata)
+            return BidsIncremental(image, metadata)
         else:
             slices = nib.four_to_three(image)
 
-            if imageIndex < len(slices):
-                newImage = slices[imageIndex]
+            if sliceIndex < len(slices):
+                newImage = slices[sliceIndex]
                 return BidsIncremental(newImage, metadata)
             else:
-                logger.error("Image index %d is too large for NIfTI volume of \
-                              length %d", imageIndex, len(slices))
+                logger.error(f"Image index {sliceIndex} too large for NIfTI "
+                             f"volume of length {len(slices)}")
                 return None
