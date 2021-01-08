@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 
 # Test that construction fails for image metadata missing required fields
-def testInvalidConstruction(sample2DNifti, sampleNifti1, imageMetadata):
+def testInvalidConstruction(sample2DNifti, sample4DNifti1, imageMetadata):
     # Test empty image
     with pytest.raises(ValidationError):
         BidsIncremental(image=None,
@@ -43,7 +43,7 @@ def testInvalidConstruction(sample2DNifti, sampleNifti1, imageMetadata):
 
         assert not BidsIncremental.isCompleteImageMetadata(imageMetadata)
         with pytest.raises(ValidationError):
-            BidsIncremental(image=sampleNifti1,
+            BidsIncremental(image=sample4DNifti1,
                             imageMetadata=imageMetadata)
 
         imageMetadata[key] = value
@@ -55,7 +55,7 @@ def testInvalidConstruction(sample2DNifti, sampleNifti1, imageMetadata):
         imageMetadata[key] = 10**6
 
         with pytest.raises(ValidationError):
-            BidsIncremental(image=sampleNifti1,
+            BidsIncremental(image=sample4DNifti1,
                             imageMetadata=imageMetadata)
 
         imageMetadata[key] = original
@@ -68,13 +68,13 @@ def testInvalidConstruction(sample2DNifti, sampleNifti1, imageMetadata):
 
 # Test that valid arguments produce a BIDS incremental
 def testValidConstruction(sample3DNifti1, sample3DNifti2,
-                          sampleNifti1, sampleNifti2, imageMetadata):
+                          sample4DNifti1, sampleNifti2, imageMetadata):
     # 3-D should be promoted to 4-D
     assert BidsIncremental(sample3DNifti1, imageMetadata) is not None
     assert BidsIncremental(sample3DNifti2, imageMetadata) is not None
 
     # Both Nifti1 and Nifti2 images should work
-    assert BidsIncremental(sampleNifti1, imageMetadata) is not None
+    assert BidsIncremental(sample4DNifti1, imageMetadata) is not None
     assert BidsIncremental(sampleNifti2, imageMetadata) is not None
 
     # If the metadata provides a RepetitionTime or EchoTime that works without
@@ -82,7 +82,7 @@ def testValidConstruction(sample3DNifti1, sample3DNifti2,
     repetitionTimeKey = "RepetitionTime"
     original = imageMetadata[repetitionTimeKey]
     imageMetadata[repetitionTimeKey] = 1.5
-    assert BidsIncremental(sampleNifti1, imageMetadata) is not None
+    assert BidsIncremental(sample4DNifti1, imageMetadata) is not None
     imageMetadata[repetitionTimeKey] = original
 
 
@@ -97,29 +97,29 @@ def testStringOutput(validBidsI):
 
 
 # Test that equality comparison is as expected
-def testEquals(sampleNifti1, sample3DNifti1, imageMetadata):
+def testEquals(sample4DNifti1, sample3DNifti1, imageMetadata):
     # Test images with different headers
-    assert BidsIncremental(sampleNifti1, imageMetadata) != \
+    assert BidsIncremental(sample4DNifti1, imageMetadata) != \
            BidsIncremental(sample3DNifti1, imageMetadata)
 
     # Test images with the same header, but different data
-    newData = 2 * getNiftiData(sampleNifti1)
-    reversedNifti1 = nib.Nifti1Image(newData, sampleNifti1.affine,
-                                     header=sampleNifti1.header)
-    assert BidsIncremental(sampleNifti1, imageMetadata) != \
+    newData = 2 * getNiftiData(sample4DNifti1)
+    reversedNifti1 = nib.Nifti1Image(newData, sample4DNifti1.affine,
+                                     header=sample4DNifti1.header)
+    assert BidsIncremental(sample4DNifti1, imageMetadata) != \
         BidsIncremental(reversedNifti1, imageMetadata)
 
     # Test different image metadata
     modifiedImageMetadata = deepcopy(imageMetadata)
     modifiedImageMetadata["subject"] = "newSubject"
-    assert BidsIncremental(sampleNifti1, imageMetadata) != \
-           BidsIncremental(sampleNifti1, modifiedImageMetadata)
+    assert BidsIncremental(sample4DNifti1, imageMetadata) != \
+           BidsIncremental(sample4DNifti1, modifiedImageMetadata)
 
     # Test different dataset metadata
     datasetMeta1 = {"Name": "Dataset_1", "BIDSVersion": "1.0"}
     datasetMeta2 = {"Name": "Dataset_2", "BIDSVersion": "2.0"}
-    assert BidsIncremental(sampleNifti1, imageMetadata, datasetMeta1) != \
-           BidsIncremental(sampleNifti1, imageMetadata, datasetMeta2)
+    assert BidsIncremental(sample4DNifti1, imageMetadata, datasetMeta1) != \
+           BidsIncremental(sample4DNifti1, imageMetadata, datasetMeta2)
 
 
 # Test that image metadata dictionaries can be properly created by the class
@@ -136,16 +136,16 @@ def testImageMetadataDictCreation(imageMetadata):
 
 
 # Test that invalid dataset.json fields are rejected and valid ones are accepted
-def testDatasetMetadata(sampleNifti1, imageMetadata):
+def testDatasetMetadata(sample4DNifti1, imageMetadata):
     # Test invalid dataset metadata
     with pytest.raises(ValidationError):
-        BidsIncremental(image=sampleNifti1,
+        BidsIncremental(image=sample4DNifti1,
                         imageMetadata=imageMetadata,
                         datasetMetadata={"random_field": "doesnt work"})
 
     # Test valid dataset metadata
     dataset_name = "Test dataset"
-    bidsInc = BidsIncremental(image=sampleNifti1,
+    bidsInc = BidsIncremental(image=sample4DNifti1,
                               imageMetadata=imageMetadata,
                               datasetMetadata={"Name": dataset_name,
                                                "BIDSVersion": "1.0"})

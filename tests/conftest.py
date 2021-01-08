@@ -105,7 +105,7 @@ def sample3DNifti2():
 
 # 4-D NIfTI 1 image derived from concatting the test DICOM image with itself
 @pytest.fixture(scope='function')
-def sampleNifti1():
+def sample4DNifti1():
     return readNifti(test_4DNifti1Path)
 
 
@@ -128,11 +128,11 @@ def imageMetadata(dicomImageMetadata):
 
 
 @pytest.fixture(scope='function')
-def validBidsI(sampleNifti1, imageMetadata):
+def validBidsI(sample4DNifti1, imageMetadata):
     """
     Constructs and returns a known-valid BIDS-Incremental using known metadata.
     """
-    return BidsIncremental(image=sampleNifti1,
+    return BidsIncremental(image=sample4DNifti1,
                            imageMetadata=imageMetadata)
 
 
@@ -172,13 +172,14 @@ def archiveWithImage(image, metadata: dict, tmpdir):
 # BIDS Archive with a 3-D image in it
 @pytest.fixture(scope='function')
 def bidsArchive3D(tmpdir, sample3DNifti1, imageMetadata):
+    adjustTimeUnits(imageMetadata)
     return archiveWithImage(sample3DNifti1, imageMetadata, tmpdir)
 
 
 # BIDS Archive with a 4-D image in it
 @pytest.fixture(scope='function')
-def bidsArchive4D(tmpdir, sampleNifti1, imageMetadata):
-    return archiveWithImage(sampleNifti1, imageMetadata, tmpdir)
+def bidsArchive4D(tmpdir, sample4DNifti1, imageMetadata):
+    return archiveWithImage(sample4DNifti1, imageMetadata, tmpdir)
 
 
 """ END BIDS RELATED FIXTURES """
