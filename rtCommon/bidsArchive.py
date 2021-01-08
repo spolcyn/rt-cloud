@@ -25,7 +25,7 @@ from rtCommon.bidsCommon import (
 )
 from rtCommon.bidsIncremental import BidsIncremental
 from rtCommon import bidsLibrary as bl
-from rtCommon.errors import ValidationError
+from rtCommon.errors import StateError, ValidationError
 from rtCommon.imageHandling import readNifti
 
 # Silence future warning
@@ -177,6 +177,15 @@ class BidsDataset:
 
         return matchingFiles
 
+def failIfEmpty(func):
+    def emptyFailWrapFunction(*args, **kwargs):
+        if args[0].dataset is None:
+            raise StateError("Dataset empty")
+        else:
+            return func(*args, **kwargs)
+
+    return emptyFailWrapFunction
+
 
 class BidsArchive:
     """
@@ -194,7 +203,8 @@ class BidsArchive:
     def __str__(self):
         return str(self.dataset)
 
-    def subjects(self):
+    @failIfEmpty
+    def subjects(self) -> List:
         return self.dataset.data.get_subjects()
 
     def isEmpty(self) -> bool:
@@ -203,24 +213,33 @@ class BidsArchive:
     def openDataset(self, rootPath: str):
         self.dataset = BidsDataset(rootPath)
 
+    @failIfEmpty
     def pathExists(self, path: str) -> bool:
         """
         Check whether the provided path is valid within the archive.
         """
         return self.dataset.pathExists(path)
 
+    @failIfEmpty
     def getFilesForPath(self, path: str) -> List:
         return self.dataset.findFiles(path)
 
+    @failIfEmpty
     def getImage(self, path: str) -> nib.Nifti1Image:
         return self.dataset.findImage(path)
 
+    @failIfEmpty
     def addImage(self, img: nib.Nifti1Image, path: str) -> None:
+        # TODO(spolcyn): Change behavior to initialize dafault archive
+        # information if enough data is provided in the path to be BIDS
+        # compatible
         self.dataset.addImage(img, path)
 
+    @failIfEmpty
     def getMetadata(self, path: str) -> dict:
         return self.dataset.findMetadata(path)
 
+    @failIfEmpty
     def addMetadata(self, metadata: dict, path: str) -> None:
         self.dataset.addMetadata(metadata, path)
 
