@@ -28,7 +28,8 @@ from rtCommon.bidsCommon import (
     BIDS_DIR_PATH_PATTERN,
     BIDS_FILE_PATTERN,
     BIDS_FILE_PATH_PATTERN,
-    getNiftiData
+    getNiftiData,
+    adjustTimeUnits,
 )
 from rtCommon.bidsIncremental import BidsIncremental
 import rtCommon.bidsLibrary as bl
@@ -179,6 +180,7 @@ def bidsArchive3D(tmpdir, sample3DNifti1, imageMetadata):
 # BIDS Archive with a 4-D image in it
 @pytest.fixture(scope='function')
 def bidsArchive4D(tmpdir, sample4DNifti1, imageMetadata):
+    adjustTimeUnits(imageMetadata)
     return archiveWithImage(sample4DNifti1, imageMetadata, tmpdir)
 
 

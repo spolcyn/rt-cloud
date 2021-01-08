@@ -26,6 +26,7 @@ from rtCommon.bidsCommon import (
     BIDS_DIR_PATH_PATTERN,
     DATASET_DESC_REQ_FIELDS,
     DEFAULT_DATASET_DESC,
+    adjustTimeUnits,
     getNiftiData,
     loadBidsEntities,
 )
@@ -83,8 +84,6 @@ class BidsIncremental:
 
         """ Store image metadata """
         # Ensure BIDS-I has an independent metadata dictionary
-        # TODO(spolcyn): Replace this deepcopy with building a dictionary of
-        # BIDSEntity types from PyBids
         self._imgMetadata = deepcopy(imageMetadata)
 
         protocolName = self._imgMetadata.get("ProtocolName", None)
@@ -105,21 +104,7 @@ class BidsIncremental:
         # TODO(spolcyn): Correctly extract slice timing from the metadata
         # TODO(spolcyn): Support volume timing and associated fields
         self._imgMetadata["SliceTiming"] = list(np.linspace(0.0, 1.5, 27))
-
-        fieldToMaxValue = {"RepetitionTime": 100, "EchoTime": 1}
-        for field, maxValue in fieldToMaxValue.items():
-            value = int(self.getMetadataField(field))
-            if value <= maxValue:
-                continue
-            elif value / 1000.0 <= maxValue:
-                logger.info(f"{field} has value {value} > {maxValue}. Assuming "
-                            f"value is in milliseconds, converting to seconds.")
-                value = value / 1000.0
-                self.setMetadataField(field, value)
-            else:
-                raise ValidationError(f"{field} has value {value}, which is "
-                                      f"greater than {maxValue} even if "
-                                      f"interpreted as milliseconds.")
+        adjustTimeUnits(self._imgMetadata)
 
         """ Store dataset metadata """
         if datasetMetadata is None:
@@ -476,9 +461,8 @@ class BidsIncremental:
         # Write out image metadata
         metadataPath = os.path.join(dataDirPath, self.metadataFileName())
         with open(metadataPath, mode='w') as metadataFile:
-            # TODO(spolcyn): Write out internally used entities, like "subject",
-            # "task", and "run" in a suitable way (likely not at all, since
-            # they're included in the filename)
+            # TODO(spolcyn): Don't write out entities like 'subject', "task",
+            # and "run", as they're included in the filename
             json.dump(self._imgMetadata, metadataFile, sort_keys=True, indent=4)
 
         # TODO(spolcyn): Make events file correspond correctly to the imaging

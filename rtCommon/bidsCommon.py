@@ -10,11 +10,14 @@ import functools
 import os
 import re
 
+import logging
 import pydicom
 import numpy as np
 import yaml
 
 from rtCommon.errors import ValidationError
+
+logger = logging.getLogger(__name__)
 
 # Version of the standard to be compatible with
 BIDS_VERSION = "1.4.1"
@@ -124,3 +127,29 @@ def dicomMetadataNameToBidsMetadataName(tag) -> str:
         return makeDicomFieldBidsCompatible(name)
     except KeyError:
         raise ValidationError("Tag {} not a valid DICOM tag".format(tag))
+
+def adjustTimeUnits(imageMetadata: dict) -> None:
+    """
+    Validates and converts in-place the units of various time-based metadata,
+    which is stored in seconds in BIDS, but often provided using milliseconds in
+    DICOM.
+    """
+    fieldToMaxValue = {"RepetitionTime": 100, "EchoTime": 1}
+    for field, maxValue in fieldToMaxValue.items():
+        value = imageMetadata.get(field, None)
+        if value is None:
+            continue
+        else:
+            value = int(value)
+
+        if value <= maxValue:
+            continue
+        elif value / 1000.0 <= maxValue:
+            logger.info(f"{field} has value {value} > {maxValue}. Assuming "
+                        f"value is in milliseconds, converting to seconds.")
+            value = value / 1000.0
+            imageMetadata[field] = value
+        else:
+            raise ValidationError(f"{field}'s max value is {maxValue}; {value} "
+                                  f"> {maxValue} even if interpreted as "
+                                  f"milliseconds.")
