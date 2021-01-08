@@ -130,10 +130,12 @@ class BidsDataset:
 
     def findMetadata(self, path: str) -> dict:
         """
-        Finds metadata for the file at path in the dataset.
+        Finds metadata for the file at path in the dataset. For an image file,
+        this will include the entities embedded in the pathname (e.g, 'subject')
+        as well as the metdata found in any sidecar metadata files.
 
         Args:
-            path: Relative path to an image file.
+            path: Relative path to the file to obtain metdata for.
 
         Returns:
             Dictionary with sidecar metadata for the file and any metadata that
@@ -270,7 +272,7 @@ class BidsArchive:
         # 2.2) Image doesn't exist in archive, but rest of the path is valid for
         # the archive; create new Nifti file within the archive
         # 2.3) Neither image nor path is valid for provided archive; fail append
-        if self.isEmpty():
+        if self.isEmpty() and makePath:
             incremental.writeToArchive(self.rootPath)
             self.openDataset(self.rootPath)
 
@@ -283,7 +285,7 @@ class BidsArchive:
                                               archiveImg):
                 raise ValidationError("Nifti headers failed validation!")
             if not bl.verifyMetadataMatch(incremental.imgMetadata,
-                                          self.getMetadata(metadataPath)):
+                                          self.getMetadata(imgPath)):
                 raise ValidationError("Image metadata failed validation!")
 
             # Build 4-D NIfTI if archive has 3-D, concat to 4-D otherwise

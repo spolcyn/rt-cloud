@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 DISABLE_NIFTI_HEADER_CHECK = False
 
 # Set to True to skip validating metadata when appending
-DISABLE_METADATA_CHECK = True
+DISABLE_METADATA_CHECK = False
 
 
 def getMetadata(dicomImg: pydicom.dataset.Dataset) -> (dict, dict):
@@ -182,6 +182,10 @@ def verifyMetadataMatch(meta1: dict, meta2: dict):
 
     # If either field is None, short-circuit and continue checking other fields
     for field in matchFields:
+        logger.debug("Analyzing field %s | Meta1: %s | Meta2: %s",
+                     field,
+                     meta1.get(field),
+                     meta2.get(field))
         field1 = meta1.get(field)
         if field1 is None:
             continue

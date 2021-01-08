@@ -116,7 +116,7 @@ def sampleNifti2():
     return readNifti(test_4DNifti2Path)
 
 
-@pytest.fixture
+@pytest.fixture(scope='function')
 def imageMetadata(dicomImageMetadata):
     """
     Dictionary with all required metadata to construct a BIDS-Incremental, as
