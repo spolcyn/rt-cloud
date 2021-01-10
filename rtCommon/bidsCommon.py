@@ -121,15 +121,6 @@ def makeDicomFieldBidsCompatible(field: str) -> str:
     return re.compile('[^a-zA-z]').sub("", field)
 
 
-@functools.lru_cache(maxsize=128)
-def dicomMetadataNameToBidsMetadataName(tag) -> str:
-    try:
-        (_, _, name, _, _) = pydicom.datadict.get_entry(tag)
-        return makeDicomFieldBidsCompatible(name)
-    except KeyError:
-        raise ValidationError("Tag {} not a valid DICOM tag".format(tag))
-
-
 def adjustTimeUnits(imageMetadata: dict) -> None:
     """
     Validates and converts in-place the units of various time-based metadata,
