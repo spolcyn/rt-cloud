@@ -379,3 +379,42 @@ def testStripSliceIndexOutOfBounds(bidsArchive3D, bidsArchive4D, imageMetadata,
     assert f"Image index {outOfBoundsIndex} too large for NIfTI volume of " \
            f"length {archiveLength}" in caplog.text
     assert incremental is None
+
+# Test stripping when files are found, but none match provided parameters
+# exactly
+def testStripNoParameterMatch(bidsArchive4D, imageMetadata, caplog):
+    # Test non-existent otherLabels
+    incremental = bidsArchive4D.stripIncremental(
+        imageMetadata["subject"],
+        imageMetadata["session"],
+        imageMetadata["task"],
+        imageMetadata["suffix"],
+        "func",
+        otherLabels={'run': 2})
+
+    assert incremental is None
+    assert "Failed to find matching image in BIDS Archive " \
+        "for provided metadata" in caplog.text
+
+    # Test non-existent task, subject, session, and suffix in turn
+    modificationPairs = {'subject': 'nonExistentSubject',
+                         'session': 'nonExistentSession',
+                         'task': 'nonExistentSession',
+                         'suffix': 'notBoldCBvOrPhase'}
+
+    for argName, argValue in modificationPairs.items():
+        oldValue = imageMetadata[argName]
+        imageMetadata[argName] = argValue
+
+        incremental = bidsArchive4D.stripIncremental(
+            subject=imageMetadata["subject"],
+            session=imageMetadata["session"],
+            task=imageMetadata["task"],
+            suffix=imageMetadata["suffix"],
+            dataType="func")
+
+        assert incremental is None
+        assert "Failed to find matching image in BIDS Archive " \
+            "for provided metadata" in caplog.text
+
+        imageMetadata[argName] = oldValue

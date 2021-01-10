@@ -171,18 +171,34 @@ def archiveWithImage(image, metadata: dict, tmpdir):
     return BidsArchive(rootPath)
 
 
-# BIDS Archive with a 3-D image in it
+# BIDS Archive with a 3-D image
 @pytest.fixture(scope='function')
 def bidsArchive3D(tmpdir, sample3DNifti1, imageMetadata):
     adjustTimeUnits(imageMetadata)
     return archiveWithImage(sample3DNifti1, imageMetadata, tmpdir)
 
 
-# BIDS Archive with a 4-D image in it
+# BIDS Archive with a 4-D image
 @pytest.fixture(scope='function')
 def bidsArchive4D(tmpdir, sample4DNifti1, imageMetadata):
     adjustTimeUnits(imageMetadata)
     return archiveWithImage(sample4DNifti1, imageMetadata, tmpdir)
+
+# BIDS Archive with multiple runs for a single subject
+@pytest.fixture(scope='function')
+def bidsArchiveMultipleRuns(tmpdir, sample4DNifti1, imageMetadata):
+    adjustTimeUnits(imageMetadata)
+    archive = archiveWithImage(sample4DNifti1, imageMetadata, tmpdir)
+
+    imageMetadata['run'] = int(imageMetadata['run']) + 1
+    logger.debug("Run from dict: %s", imageMetadata['run'])
+    incremental = BidsIncremental(sample4DNifti1, imageMetadata)
+    logger.debug("Run: %d", incremental.getMetadataField('run'))
+    archive.appendIncremental(incremental)
+
+    return archive
+
+
 
 
 """ END BIDS RELATED FIXTURES """

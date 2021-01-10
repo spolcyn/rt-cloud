@@ -179,6 +179,7 @@ class BidsDataset:
 
         return matchingFiles
 
+
 def failIfEmpty(func):
     def emptyFailWrapFunction(*args, **kwargs):
         if args[0].dataset is None:
@@ -209,7 +210,6 @@ class BidsArchive:
     def _update(self):
         if self.dataset:
             self.dataset._updateLayout()
-
 
     @failIfEmpty
     def subjects(self) -> List:
@@ -382,7 +382,6 @@ class BidsArchive:
         if not metaPaths:
             logger.warning("Archive didn't contain any matching metadata")
 
-
         image = None
 
         def pathEntitiesMatch(path) -> bool:
@@ -420,8 +419,8 @@ class BidsArchive:
                 break
 
         if image is None:
-            logger.error("Failed to find matching image in BIDS Archive \
-                         for provided metadata")
+            logger.error("Failed to find matching image in BIDS Archive for "  \
+                         "provided metadata")
             return None
         elif len(image.dataobj.shape) == 3:
             if sliceIndex != 0:
