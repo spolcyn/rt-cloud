@@ -22,9 +22,10 @@ from rtCommon.bidsCommon import (
     getNiftiData,
     isJsonPath,
     isNiftiPath,
+    verifyNiftiHeadersMatch,
+    verifySidecarMetadataMatch,
 )
 from rtCommon.bidsIncremental import BidsIncremental
-from rtCommon import bidsLibrary as bl
 from rtCommon.errors import StateError, ValidationError
 from rtCommon.imageHandling import readNifti
 
@@ -287,11 +288,11 @@ class BidsArchive:
             archiveImg = self.getImage(imgPath)
 
             # Validate header match
-            if not bl.verifyNiftiHeadersMatch(incremental.image,
-                                              archiveImg):
+            if not verifyNiftiHeadersMatch(incremental.image,
+                                           archiveImg):
                 raise ValidationError("Nifti headers failed validation!")
-            if not bl.verifyMetadataMatch(incremental.imgMetadata,
-                                          self.getMetadata(imgPath)):
+            if not verifySidecarMetadataMatch(incremental.imgMetadata,
+                                       self.getMetadata(imgPath)):
                 raise ValidationError("Image metadata failed validation!")
 
             # Build 4-D NIfTI if archive has 3-D, concat to 4-D otherwise

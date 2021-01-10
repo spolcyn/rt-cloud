@@ -27,11 +27,11 @@ from rtCommon.bidsCommon import (
     DEFAULT_DATASET_DESC,
     BIDS_DIR_PATH_PATTERN,
     BIDS_FILE_PATTERN,
-    getNiftiData,
     adjustTimeUnits,
+    getMetadata,
+    getNiftiData,
 )
 from rtCommon.bidsIncremental import BidsIncremental
-import rtCommon.bidsLibrary as bl
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +71,7 @@ def dicomImage(dicomMetadataSample) -> pydicom.dataset.Dataset:
 # Public metadata for test DICOM file
 @pytest.fixture
 def dicomImageMetadata(dicomImage):
-    public, _ = bl.getMetadata(dicomImage)
+    public, _ = getMetadata(dicomImage)
     return public
 
 
