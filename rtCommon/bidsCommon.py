@@ -128,6 +128,7 @@ def dicomMetadataNameToBidsMetadataName(tag) -> str:
     except KeyError:
         raise ValidationError("Tag {} not a valid DICOM tag".format(tag))
 
+
 def adjustTimeUnits(imageMetadata: dict) -> None:
     """
     Validates and converts in-place the units of various time-based metadata,
@@ -153,3 +154,31 @@ def adjustTimeUnits(imageMetadata: dict) -> None:
             raise ValidationError(f"{field}'s max value is {maxValue}; {value} "
                                   f"> {maxValue} even if interpreted as "
                                   f"milliseconds.")
+
+
+def metadataFromProtocolName(protocolName: str) -> dict:
+    """
+    Extracts BIDS label-value combinations from a DICOM protocol name, if
+    any are present.
+
+    Returns:
+        A dictionary containing any valid label-value combinations found.
+    """
+    if not protocolName:
+        return {}
+
+    prefix = "(?:(?<=_)|(?<=^))"  # match beginning of string or underscore
+    suffix = "(?:(?=_)|(?=$))"  # match end of string or underscore
+    fieldPat = "(?:{field}-)(.+?)"  # TODO(spolcyn): Document this regex
+    patternTemplate = prefix + fieldPat + suffix
+
+    foundEntities = {}
+    for entityName, entityValueDict in loadBidsEntities().items():
+        entity = entityValueDict[BidsEntityKeys.ENTITY.value]
+        entitySearchPattern = patternTemplate.format(field=entity)
+        result = re.search(entitySearchPattern, protocolName)
+
+        if result is not None and len(result.groups()) == 1:
+            foundEntities[entityName] = result.group(1)
+
+    return foundEntities

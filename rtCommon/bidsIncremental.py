@@ -10,7 +10,6 @@ from copy import deepcopy
 import json
 from operator import eq as opeq
 import os
-import re
 from typing import Any, Callable
 
 from bids.layout.writing import build_path as bids_build_path
@@ -20,7 +19,6 @@ import numpy as np
 
 from rtCommon.errors import ValidationError
 from rtCommon.bidsCommon import (
-    BidsEntityKeys as bek,
     BidsFileExtension,
     BIDS_FILE_PATTERN,
     BIDS_DIR_PATH_PATTERN,
@@ -29,6 +27,7 @@ from rtCommon.bidsCommon import (
     adjustTimeUnits,
     getNiftiData,
     loadBidsEntities,
+    metadataFromProtocolName,
 )
 
 logger = logging.getLogger(__name__)
@@ -84,15 +83,12 @@ class BidsIncremental:
 
         """ Store image metadata """
         # Ensure BIDS-I has an independent metadata dictionary
-        self._imgMetadata = deepcopy(imageMetadata)
-
-        protocolName = self._imgMetadata.get("ProtocolName", None)
-        self._imgMetadata.update(self.metadataFromProtocolName(protocolName))
+        protocolName = imageMetadata.get("ProtocolName", None)
+        self._imgMetadata = metadataFromProtocolName(protocolName)
+        self._imgMetadata.update(imageMetadata)
 
         # Validate or modify fields that are now known to exist
-        # TODO(spolcyn): Make a more extensible approach using PyBids entities
-        # to putting values into the proper types
-        if self._imgMetadata.get("run", None):
+        if self._imgMetadata.get("run", None) is not None:
             self._imgMetadata["run"] = int(self._imgMetadata["run"])
 
         self._imgMetadata["TaskName"] = self._imgMetadata["task"]
@@ -247,34 +243,6 @@ class BidsIncremental:
 
         """
         return len(cls.missingImageMetadata(imageMeta)) == 0
-
-    @classmethod
-    def metadataFromProtocolName(cls, protocolName: str) -> dict:
-        """
-        Extracts BIDS label-value combinations from a DICOM protocol name, if
-        any are present.
-
-        Returns:
-            A dictionary containing any valid label-value combinations found.
-        """
-        if not protocolName:
-            return {}
-
-        prefix = "(?:(?<=_)|(?<=^))"  # match beginning of string or underscore
-        suffix = "(?:(?=_)|(?=$))"  # match end of string or underscore
-        fieldPat = "(?:{field}-)(.+?)"  # TODO(spolcyn): Document this regex
-        patternTemplate = prefix + fieldPat + suffix
-
-        foundEntities = {}
-        for entityName, entityValueDict in cls.ENTITIES.items():
-            entity = entityValueDict[bek.ENTITY.value]
-            entitySearchPattern = patternTemplate.format(field=entity)
-            result = re.search(entitySearchPattern, protocolName)
-
-            if result is not None and len(result.groups()) == 1:
-                foundEntities[entityName] = result.group(1)
-
-        return foundEntities
 
     def _exceptIfNotBids(self, entityName: str):
         """ Raise an exception if the argument is not a valid BIDS entity """

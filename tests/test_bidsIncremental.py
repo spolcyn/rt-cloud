@@ -17,7 +17,8 @@ from rtCommon.bidsCommon import (
     getNiftiData,
     BidsFileExtension,
     BIDS_DIR_PATH_PATTERN,
-    BIDS_FILE_PATTERN
+    BIDS_FILE_PATTERN,
+    metadataFromProtocolName,
 )
 from rtCommon.errors import ValidationError
 
@@ -84,6 +85,22 @@ def testValidConstruction(sample3DNifti1, sample3DNifti2,
     imageMetadata[repetitionTimeKey] = 1.5
     assert BidsIncremental(sample4DNifti1, imageMetadata) is not None
     imageMetadata[repetitionTimeKey] = original
+
+
+# Test that the provided image metadata dictionary takes precedence over the
+# metadata parsed from the protocol name, if any
+def testConstructionMetadataPrecedence(sample4DNifti1, imageMetadata):
+    assert imageMetadata.get('ProtocolName', None) is not None
+    metadata = metadataFromProtocolName(imageMetadata['ProtocolName'])
+    assert len(metadata) > 0
+
+    assert metadata.get('run', None) is not None
+    newRunNumber = int(metadata['run']) + 1
+    imageMetadata['run'] = newRunNumber
+    assert metadata['run'] != imageMetadata['run']
+
+    incremental = BidsIncremental(sample4DNifti1, imageMetadata)
+    assert incremental.getMetadataField('run') == newRunNumber
 
 
 # Test that the string output of the BIDS-I is as expected
@@ -166,24 +183,6 @@ def testMetadataOutput(validBidsI, imageMetadata):
         assert validBidsI.getMetadataField(entity) == imageMetadata[entity]
     # Suffix
     assert validBidsI.suffix() == imageMetadata["suffix"]
-
-
-# Test that the BIDS-I properly parses BIDS fields present in a DICOM
-# ProtocolName header field
-def testParseProtocolName():
-    # ensure nothing spurious is found in strings without BIDS fields
-    assert BidsIncremental.metadataFromProtocolName("") == {}
-    assert BidsIncremental.metadataFromProtocolName("this ain't bids") == {}
-    assert BidsIncremental.metadataFromProtocolName("nor_is_this") == {}
-    assert BidsIncremental.metadataFromProtocolName("still-aint_it") == {}
-
-    protocolName = "func_ses-01_task-story_run-01"
-    expectedValues = {'session': '01', 'task': 'story', 'run': '01'}
-
-    parsedValues = BidsIncremental.metadataFromProtocolName(protocolName)
-
-    for key, expectedValue in expectedValues.items():
-        assert parsedValues[key] == expectedValue
 
 
 # Test setting BIDS-I metadata API works as expected

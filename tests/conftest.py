@@ -50,6 +50,7 @@ def dicomMetadataSample() -> dict:
     sample["StudyDescription"] = "Norman_Mennen^5516_greenEyes"
     sample["StudyInstanceUID"] = \
         "1.3.12.2.1107.5.2.19.45031.30000019021215313940500000046"
+    sample["ProtocolName"] = "func_ses-01_task-faces_run-01"
 
     return sample
 
