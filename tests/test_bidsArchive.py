@@ -1,9 +1,7 @@
-import json
 import logging
 import os
 from pathlib import Path
 import re
-import tempfile
 
 from bids.layout.writing import build_path as bids_build_path
 import nibabel as nib
@@ -76,6 +74,7 @@ def archiveHasMetadata(archive: BidsArchive, metadata: dict) -> bool:
 
     return True
 
+
 def incrementAcquisitionTime(incremental: BidsIncremental) -> None:
     """
     Increment the acquisition time in an image metadata dictionary to prepare
@@ -91,7 +90,7 @@ def incrementAcquisitionTime(incremental: BidsIncremental) -> None:
     trTime = 1.0 if trTime is None else float(trTime)
 
     incremental.setMetadataField("AcquisitionTime",
-                                previousAcquisitionTime + trTime)
+                                 previousAcquisitionTime + trTime)
 
 
 """ -----BEGIN TESTS----- """
@@ -184,7 +183,8 @@ def testAppendNoMakePath(bidsArchive3D, validBidsI, tmpdir):
 
 
 # Test appending raises error when NIfTI headers incompatible with existing
-def testConflictingNiftiHeaderAppend(bidsArchive3D, sample3DNifti1, imageMetadata):
+def testConflictingNiftiHeaderAppend(bidsArchive3D, sample3DNifti1,
+                                     imageMetadata):
     # Modify NIfTI header in critical way (change the datatype)
     sample3DNifti1.header['datatype'] = 32  # 32=complex, should be uint16=512
     with pytest.raises(ValidationError):
@@ -289,7 +289,6 @@ def testStripImage(bidsArchive3D, bidsArchive4D, sample3DNifti1, sample4DNifti1,
 # present in the archive
 def testStripNoMatchingImage(bidsArchive4D, imageMetadata):
     imageMetadata['subject'] = 'notPresent'
-    path = bids_build_path(imageMetadata, BIDS_FILE_PATH_PATTERN)
     incremental = bidsArchive4D.stripIncremental(
         imageMetadata["subject"],
         imageMetadata["session"],
@@ -323,12 +322,11 @@ def testStripNoMatchingMetdata(bidsArchive4D, imageMetadata, caplog, tmpdir):
 
     # Without the sidecar metadata, not enough information for an incremental
     with pytest.raises(ValidationError):
-        incremental = bidsArchive4D.stripIncremental(
-            imageMetadata["subject"],
-            imageMetadata["session"],
-            imageMetadata["task"],
-            imageMetadata["suffix"],
-            "func")
+        bidsArchive4D.stripIncremental(imageMetadata["subject"],
+                                       imageMetadata["session"],
+                                       imageMetadata["task"],
+                                       imageMetadata["suffix"],
+                                       "func")
 
     # Check the logging for the warning message
     assert "Archive didn't contain any matching metadata" in caplog.text
@@ -362,7 +360,7 @@ def testStripSliceIndexOutOfBounds(bidsArchive3D, bidsArchive4D, imageMetadata,
         sliceIndex=outOfBoundsIndex)
 
     assert f"Matching image was a 3-D NIfTI; time index {outOfBoundsIndex} " \
-            "too high for a 3-D NIfTI (must be 0)" in caplog.text
+           f"too high for a 3-D NIfTI (must be 0)" in caplog.text
     assert incremental is None
 
     # 4D case
@@ -379,6 +377,7 @@ def testStripSliceIndexOutOfBounds(bidsArchive3D, bidsArchive4D, imageMetadata,
     assert f"Image index {outOfBoundsIndex} too large for NIfTI volume of " \
            f"length {archiveLength}" in caplog.text
     assert incremental is None
+
 
 # Test stripping when files are found, but none match provided parameters
 # exactly

@@ -27,7 +27,6 @@ from rtCommon.bidsCommon import (
     DEFAULT_DATASET_DESC,
     BIDS_DIR_PATH_PATTERN,
     BIDS_FILE_PATTERN,
-    BIDS_FILE_PATH_PATTERN,
     getNiftiData,
     adjustTimeUnits,
 )
@@ -184,6 +183,7 @@ def bidsArchive4D(tmpdir, sample4DNifti1, imageMetadata):
     adjustTimeUnits(imageMetadata)
     return archiveWithImage(sample4DNifti1, imageMetadata, tmpdir)
 
+
 # BIDS Archive with multiple runs for a single subject
 @pytest.fixture(scope='function')
 def bidsArchiveMultipleRuns(tmpdir, sample4DNifti1, imageMetadata):
@@ -197,8 +197,6 @@ def bidsArchiveMultipleRuns(tmpdir, sample4DNifti1, imageMetadata):
     archive.appendIncremental(incremental)
 
     return archive
-
-
 
 
 """ END BIDS RELATED FIXTURES """

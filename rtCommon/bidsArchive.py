@@ -419,7 +419,7 @@ class BidsArchive:
                 break
 
         if image is None:
-            logger.error("Failed to find matching image in BIDS Archive for "  \
+            logger.error("Failed to find matching image in BIDS Archive for "
                          "provided metadata")
             return None
         elif len(image.dataobj.shape) == 3:
