@@ -7,7 +7,6 @@ Implements interacting with an on-disk BIDS Archive.
 -----------------------------------------------------------------------------"""
 import json
 import logging
-import numpy as np
 import os
 from typing import List
 
@@ -16,6 +15,7 @@ from bids.layout import parse_file_entities as bids_parse_file_entities
 from bids.layout.writing import build_path as bids_build_path
 import bids.config as bc
 import nibabel as nib
+import numpy as np
 
 from rtCommon.bidsCommon import (
     BIDS_DIR_PATH_PATTERN,
@@ -65,8 +65,8 @@ class BidsDataset:
         # search for matching BIDS file in the dataset
         relPath = self._stripRoot(relPath)
         result = self.data.get_file(self._stripRoot(relPath))
-        if result is not None:
-            return True
+
+        return result is not None
 
     def dirExists(self, relPath: str) -> bool:
         # search for matching directory in the dataset
@@ -200,7 +200,7 @@ class BidsArchive:
         except Exception as e:
             logger.info("Failed to open dataset at %s. %s",
                         self.rootPath, str(e))
-            self.dataset = None
+            self.dataset: BIDSLayout = None
 
     def __str__(self):
         return str(self.dataset)
@@ -251,15 +251,15 @@ class BidsArchive:
         self.dataset.addMetadata(metadata, path)
 
     @staticmethod
-    def _verifyNiftiHeadersMatch(img1: nib.Nifti1Image, img2: nib.Nifti1Image):
+    def _imagesAppendCompatible(img1: nib.Nifti1Image, img2: nib.Nifti1Image):
         """
         Verifies that two Nifti image headers match in along a defined set of
         NIfTI header fields which should not change during a continuous fMRI
         scanning session.
 
         This is primarily intended as a safety check, and does not conclusively
-        determine that two images are valid to append to together or are part of the
-        same scanning session.
+        determine that two images are valid to append to together or are part of
+        the same scanning session.
 
         Args:
             header1: First Nifti header to compare (dict of numpy arrays)
@@ -288,53 +288,95 @@ class BidsArchive:
             if not (np.allclose(v1, v2, atol=0.0, equal_nan=True)):
                 logger.debug("Nifti headers don't match on field: %s \
                              (v1: %s, v2: %s)\n", field, v1, v2)
+                return False
 
-        # For pixel dimensions, the values 0 and 1 are equivalent -- any value in a
-        # higher index than the number of dimensions specified in the 'dim' field
-        # will be ignored, and a 0 in a non-ignored index makes no sense
-        field = "dim"
-        dimensions1 = header1.get(field)[0]
-        dimensions2 = header2.get(field)[0]
-        nDimensionsToCompare = min(dimensions1, dimensions2)
+        # Two NIfTI headers are append-compatible in 2 cases:
+        # 1) Pixel dimensions are exactly equal, and dimensions are equal except
+        # for in the final dimension
+        # 2) One image has one fewer dimension than the other, and all shared
+        # dimensions and pixel dimensions are exactly equal
+        dimensionMatch = True
 
-        field = "pixdim"
-        v1 = header1.get(field)[0:nDimensionsToCompare + 1]
-        v2 = header2.get(field)[0:nDimensionsToCompare + 1]
-        v1 = np.where(v1 == 0, 1, v1)
-        v2 = np.where(v2 == 0, 1, v2)
+        dimensions1 = header1.get("dim")
+        dimensions2 = header2.get("dim")
 
-        if not (np.allclose(v1, v2, atol=0.0, equal_nan=True)):
-            logger.debug("Nifti headers don't match on field: %s \
-                         (v1: %s, v2: %s)\n", field, v1, v2)
+        nDimensions1 = dimensions1[0]
+        nDimensions2 = dimensions2[0]
+
+        pixdim1 = header1.get("pixdim")
+        pixdim2 = header2.get("pixdim")
+
+        # Case 1
+        if nDimensions1 == nDimensions2:
+            logger.debug("Nifti header validation case 1")
+            pixdimEqual = np.array_equal(pixdim1, pixdim2)
+            allButFinalEqual = np.array_equal(dimensions1[:nDimensions1],
+                                              dimensions2[:nDimensions2])
+
+            logger.debug("Case 1 pixdimEqual: %s | allButFinalEqual: %s",
+                         pixdimEqual, allButFinalEqual)
+            if not (pixdimEqual and allButFinalEqual):
+                dimensionMatch = False
+        # Case 2
+        else:
+            logger.debug("Nifti header validation case 2")
+            dimensionsDifferBy1 = abs(nDimensions1 - nDimensions2) == 1
+
+            nSharedDimensions = min(nDimensions1, nDimensions2)
+            # Arrays are 1-indexed as # dimensions is stored in first slot
+            sharedDimensionsMatch = \
+                np.array_equal(dimensions1[1:nSharedDimensions + 1],
+                               dimensions2[1:nSharedDimensions + 1])
+            # Arrays are 1-indexed as value used in one method of voxel-to-world
+            # coordination translation is stored in the first slot (value should
+            # be equal across images)
+            sharedPixdimMatch = np.array_equal(pixdim1[:nSharedDimensions + 1],
+                                               pixdim2[:nSharedDimensions + 1])
+
+            logger.debug("Case 2 variables: dimensionsDifferBy1: %s | "
+                         "sharedDimensionsMatch: %s | "
+                         "sharedPixdimMatch: %s | ",
+                         dimensionsDifferBy1, sharedDimensionsMatch,
+                         sharedPixdimMatch)
+            if not (dimensionsDifferBy1 and sharedDimensionsMatch and
+                    sharedPixdimMatch):
+                dimensionMatch = False
+
+        if not dimensionMatch:
+            logger.debug("Nifti headers not append compatible due to mismatch "
+                         "in dimensions and pixdim field. "
+                         "Dim 1: %s | Dim 2 %s\n"
+                         "Pixdim 1: %s | Pixdim 2 %s",
+                         dimensions1, dimensions2, pixdim1, pixdim2)
             return False
 
         return True
 
-
     @staticmethod
     def _verifySidecarMetadataMatch(meta1: dict, meta2: dict):
         """
-        Verifies two metadata dictionaries match in a set of required fields. If a
-        field is present in only one or neither of the two dictionaries, this is
-        considered a match.
+        Verifies two metadata dictionaries match in a set of required fields. If
+        a field is present in only one or neither of the two dictionaries, this
+        is considered a match.
 
         This is primarily intended as a safety check, and does not conclusively
-        determine that two images are valid to append to together or are part of the
-        same series.
+        determine that two images are valid to append to together or are part of
+        the same series.
 
         Args:
             meta1: First metadata dictionary
             meta2: Second metadata dictionary
 
         Returns:
-            True if all keys that are present in both dictionaries have equivalent
-            values, False otherwise.
+            True if all keys that are present in both dictionaries have
+            equivalent values, False otherwise.
 
         """
         matchFields = ["Modality", "MagneticFieldStrength", "ImagingFrequency",
-                       "Manufacturer", "ManufacturersModelName", "InstitutionName",
-                       "InstitutionAddress", "DeviceSerialNumber", "StationName",
-                       "BodyPartExamined", "PatientPosition", "EchoTime",
+                       "Manufacturer", "ManufacturersModelName",
+                       "InstitutionName", "InstitutionAddress",
+                       "DeviceSerialNumber", "StationName", "BodyPartExamined",
+                       "PatientPosition", "EchoTime",
                        "ProcedureStepDescription", "SoftwareVersions",
                        "MRAcquisitionType", "SeriesDescription", "ProtocolName",
                        "ScanningSequence", "SequenceVariant", "ScanOptions",
@@ -343,7 +385,7 @@ class BidsArchive:
                        "FlipAngle", "InPlanePhaseEncodingDirectionDICOM",
                        "ImageOrientationPatientDICOM", "PartialFourier"]
 
-        # If either field is None, short-circuit and continue checking other fields
+        # If either field is None, skip and continue checking other fields
         for field in matchFields:
             logger.debug("Analyzing field %s | Meta1: %s | Meta2: %s",
                          field,
@@ -418,8 +460,8 @@ class BidsArchive:
             archiveImg = self.getImage(imgPath)
 
             # Validate header match
-            if not self._verifyNiftiHeadersMatch(incremental.image,
-                                                 archiveImg):
+            if not self._imagesAppendCompatible(incremental.image,
+                                                archiveImg):
                 raise ValidationError("Nifti headers failed validation!")
             if not self._verifySidecarMetadataMatch(incremental.imgMetadata,
                                                     self.getMetadata(imgPath)):

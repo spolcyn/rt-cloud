@@ -149,8 +149,86 @@ def testFailFindImage(bidsArchive3D, sample3DNifti1, imageMetadata, tmpdir):
 
 
 # Test NIfTI headers are correctly compared for append compatibility
-def testNiftiHeaderValidation():
-    pytest.skip()
+def testNiftiHeaderValidation(sample4DNifti1, sample3DNifti1, sample2DNifti1,
+                              caplog):
+    # Prepare test infrastructure
+    original3DHeader = sample3DNifti1.header.copy()
+    original4DHeader = sample4DNifti1.header.copy()
+
+    other3D = nib.Nifti1Image(sample3DNifti1.dataobj,
+                              sample3DNifti1.affine,
+                              sample3DNifti1.header)
+    assert other3D.header == original3DHeader
+
+    other4D = nib.Nifti1Image(sample4DNifti1.dataobj,
+                              sample4DNifti1.affine,
+                              sample4DNifti1.header)
+    assert other4D.header == original4DHeader
+
+    """ Test field values """
+    # Test equal headers
+    assert BidsArchive._imagesAppendCompatible(sample4DNifti1, other4D)
+
+    # Test unequal headers on variety of fields that must match
+    fieldsToModify = ["intent_code", "dim_info", "scl_slope", "sform_code"]
+
+    for field in fieldsToModify:
+        fieldArray = other4D.header[field]
+        oldValue = fieldArray.copy()
+
+        if np.sum(np.isnan(fieldArray)) > 0:
+            fieldArray = np.zeros(1)
+        else:
+            fieldArray = fieldArray + 1
+        other4D.header[field] = fieldArray
+
+        assert not BidsArchive._imagesAppendCompatible(sample4DNifti1, other4D)
+        assert "Nifti headers don't match on field: " + field in caplog.text
+
+        other4D.header[field] = oldValue
+
+    """ Test special cases for dimensions and pixel dimensions being non-equal
+    but still append compatible """
+    # First three dimensions and pixel dimensions equal
+    assert BidsArchive._imagesAppendCompatible(sample3DNifti1, sample4DNifti1)
+
+    # Dimension 4 of the 3D image should not matter
+    for i in range(0, 100):
+        sample3DNifti1.header["dim"][4] = i
+        assert BidsArchive._imagesAppendCompatible(sample3DNifti1,
+                                                   sample4DNifti1)
+
+    sample3DNifti1.header["dim"] = np.copy(original3DHeader["dim"])
+    assert sample3DNifti1.header == original3DHeader
+
+    """ Test special cases for dimensions and pixel dimensions being non-equal
+    and not append compatible """
+    # Ensure all headers are in their original states
+    assert sample4DNifti1.header == original4DHeader
+    assert other4D.header == original4DHeader
+    assert sample3DNifti1.header == original3DHeader
+    assert other3D.header == original3DHeader
+
+    # 4D with non-matching first 3 dimensions should fail
+    other4D.header["dim"][1:4] = other4D.header["dim"][1:4] * 2
+    assert not BidsArchive._imagesAppendCompatible(sample4DNifti1,
+                                                   other4D)
+    # Reset
+    other4D.header["dim"][1:4] = original4DHeader["dim"][1:4]
+    assert other4D.header == original4DHeader
+
+    # 3D and 4D in which first 3 dimensions don't match
+    other3D.header["dim"][1:3] = other3D.header["dim"][1:3] * 2
+    assert not BidsArchive._imagesAppendCompatible(sample4DNifti1,
+                                                   other3D)
+
+    # Reset
+    other3D.header["dim"][1:3] = original3DHeader["dim"][1:3]
+    assert other3D.header == original3DHeader
+
+    # 2D and 4D are one too many dimensions apart
+    assert not BidsArchive._imagesAppendCompatible(sample2DNifti1,
+                                                   sample4DNifti1)
 
 
 # Test metdata fields are correctly compared for append compatibility

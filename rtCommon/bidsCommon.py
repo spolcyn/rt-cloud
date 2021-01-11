@@ -10,9 +10,9 @@ import functools
 import logging
 import os
 import re
+from typing import Tuple
 
 import pydicom
-import nibabel as nib
 import numpy as np
 import yaml
 
@@ -176,7 +176,7 @@ def metadataFromProtocolName(protocolName: str) -> dict:
     return foundEntities
 
 
-def getMetadata(dicomImg: pydicom.dataset.Dataset) -> (dict, dict):
+def getMetadata(dicomImg: pydicom.dataset.Dataset) -> Tuple[dict, dict]:
     """
     Returns the public and private metadata from the provided DICOM image.
 

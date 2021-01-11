@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 # Test that construction fails for image metadata missing required fields
-def testInvalidConstruction(sample2DNifti, sample4DNifti1, imageMetadata):
+def testInvalidConstruction(sample2DNifti1, sample4DNifti1, imageMetadata):
     # Test empty image
     with pytest.raises(ValidationError):
         BidsIncremental(image=None,
@@ -34,7 +34,7 @@ def testInvalidConstruction(sample2DNifti, sample4DNifti1, imageMetadata):
 
     # Test 2-D image
     with pytest.raises(ValidationError):
-        BidsIncremental(image=sample2DNifti,
+        BidsIncremental(image=sample2DNifti1,
                         imageMetadata=imageMetadata)
 
     # Test incomplete metadata

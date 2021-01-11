@@ -83,7 +83,7 @@ def dicomImageMetadata(dicomImage):
 
 # 2-D NIfTI 1 image corrupted from the test DICOM image
 @pytest.fixture
-def sample2DNifti():
+def sample2DNifti1():
     nifti = readNifti(test_3DNifti1Path)
     newData = getNiftiData(nifti)
     # max positive value of 2 byte, signed short used in Nifti header for
