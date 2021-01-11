@@ -1,10 +1,14 @@
 import logging
 
+import numpy as np
 import pytest
 
 from rtCommon.bidsCommon import (
     adjustTimeUnits,
     getMetadata,
+    getNiftiData,
+    isNiftiPath,
+    isJsonPath,
     loadBidsEntities,
     metadataFromProtocolName,
 )
@@ -115,10 +119,29 @@ def testParseProtocolName():
     for key, expectedValue in expectedValues.items():
         assert parsedValues[key] == expectedValue
 
-# Test metadata validation disable switch
-def testDisableMetadataValidation():
-    pytest.skip()
 
-# Test NIfTI header validation disable switch
-def testDisableNiftiHeaderValidation():
-    pytest.skip()
+# Test correct Nifti data is extracted
+def testGetNiftiData(sample4DNifti1):
+    extracted = getNiftiData(sample4DNifti1)
+    fromRawDataobj = np.asanyarray(sample4DNifti1.dataobj,
+                                   dtype=sample4DNifti1.dataobj.dtype)
+
+    assert np.array_equal(extracted, fromRawDataobj)
+
+
+# Test NIfTI paths are correctly identified
+def testCheckNiftiPath():
+    assert isNiftiPath("test.nii")
+    assert isNiftiPath("test_test_test_test.run2.old.exp16.nii")
+    assert not isNiftiPath("test.jpeg")
+    assert not isNiftiPath("test.nii.jpeg")
+    assert not isNiftiPath("test.nii.gz")
+
+
+# Test JSON (aka BIDS sidecar metdata) paths are correctly identified
+def testCheckJsonPath():
+    assert isJsonPath("test.json")
+    assert isJsonPath("test_test_test_test.run2.old.exp16.json")
+    assert not isJsonPath("test.jpeg")
+    assert not isJsonPath("test.json.jpeg")
+    assert not isJsonPath("test.json.gz")

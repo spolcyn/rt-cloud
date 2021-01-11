@@ -93,7 +93,7 @@ def incrementAcquisitionTime(incremental: BidsIncremental) -> None:
                                  previousAcquisitionTime + trTime)
 
 
-""" -----BEGIN TESTS----- """
+""" ----- BEGIN TEST ARCHIVE QUERYING ----- """
 
 
 # Test archive's string output is correct
@@ -143,6 +143,19 @@ def testFailFindImage(bidsArchive3D, sample3DNifti1, imageMetadata, tmpdir):
                                       task="will fall anyway",
                                       suffix="will fall anyway",
                                       dataType="will fall anyway")
+
+
+""" ----- BEGIN TEST APPENDING ----- """
+
+
+# Test NIfTI headers are correctly compared for append compatibility
+def testNiftiHeaderValidation():
+    pytest.skip()
+
+
+# Test metdata fields are correctly compared for append compatibility
+def testMetadataValidation():
+    pytest.skip()
 
 
 # Test images are correctly appended to an empty archive
@@ -247,6 +260,9 @@ def testAppendNewSubject(bidsArchive4D, validBidsI):
     assert len(bidsArchive4D.subjects()) == len(preSubjects) + 1
 
     assert appendDataMatches(bidsArchive4D, validBidsI)
+
+
+""" ----- BEGIN TEST IMAGE STRIPPING ----- """
 
 
 # Test stripping an image off a BIDS archive works as expected
