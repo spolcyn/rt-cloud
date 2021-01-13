@@ -172,12 +172,6 @@ class BidsIncremental:
                              np.array_equal)
             return False
 
-        if self.imageDimensions != other.imageDimensions:
-            logger.debug("Image dimensions didn't match")
-            logger.debug("Dimension 1: %s | Dimension 2: %s",
-                         self.imageDimensions, other.imageDimensions)
-            return False
-
         # Compare image metadata
         if self._imgMetadata != other._imgMetadata:
             reportDifference("Image metadata",

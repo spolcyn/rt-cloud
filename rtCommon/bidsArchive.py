@@ -308,18 +308,14 @@ class BidsArchive:
 
         # Case 1
         if nDimensions1 == nDimensions2:
-            logger.debug("Nifti header validation case 1")
             pixdimEqual = np.array_equal(pixdim1, pixdim2)
             allButFinalEqual = np.array_equal(dimensions1[:nDimensions1],
                                               dimensions2[:nDimensions2])
 
-            logger.debug("Case 1 pixdimEqual: %s | allButFinalEqual: %s",
-                         pixdimEqual, allButFinalEqual)
             if not (pixdimEqual and allButFinalEqual):
                 dimensionMatch = False
         # Case 2
         else:
-            logger.debug("Nifti header validation case 2")
             dimensionsDifferBy1 = abs(nDimensions1 - nDimensions2) == 1
 
             nSharedDimensions = min(nDimensions1, nDimensions2)
@@ -333,18 +329,13 @@ class BidsArchive:
             sharedPixdimMatch = np.array_equal(pixdim1[:nSharedDimensions + 1],
                                                pixdim2[:nSharedDimensions + 1])
 
-            logger.debug("Case 2 variables: dimensionsDifferBy1: %s | "
-                         "sharedDimensionsMatch: %s | "
-                         "sharedPixdimMatch: %s | ",
-                         dimensionsDifferBy1, sharedDimensionsMatch,
-                         sharedPixdimMatch)
             if not (dimensionsDifferBy1 and sharedDimensionsMatch and
                     sharedPixdimMatch):
                 dimensionMatch = False
 
         if not dimensionMatch:
             logger.debug("Nifti headers not append compatible due to mismatch "
-                         "in dimensions and pixdim field. "
+                         "in dimensions and pixdim fields. "
                          "Dim 1: %s | Dim 2 %s\n"
                          "Pixdim 1: %s | Pixdim 2 %s",
                          dimensions1, dimensions2, pixdim1, pixdim2)
@@ -353,7 +344,7 @@ class BidsArchive:
         return True
 
     @staticmethod
-    def _verifySidecarMetadataMatch(meta1: dict, meta2: dict):
+    def _metadataAppendCompatible(meta1: dict, meta2: dict):
         """
         Verifies two metadata dictionaries match in a set of required fields. If
         a field is present in only one or neither of the two dictionaries, this
@@ -387,39 +378,34 @@ class BidsArchive:
 
         # If either field is None, skip and continue checking other fields
         for field in matchFields:
-            logger.debug("Analyzing field %s | Meta1: %s | Meta2: %s",
-                         field,
-                         meta1.get(field),
-                         meta2.get(field))
-            field1 = meta1.get(field)
-            if field1 is None:
+            value1 = meta1.get(field, None)
+            if value1 is None:
                 continue
 
-            field2 = meta2.get(field)
-            if field2 is None:
+            value2 = meta2.get(field, None)
+            if value2 is None:
                 continue
 
-            if field1 != field2:
-                logger.debug("Metadata doen't match on field: %s \
-                             (v1: %s, v2: %s)\n", field, field1, field2)
+            if value1 != value2:
+                logger.debug(f"Metadata doesn't match on field: {field}"
+                             f"(value 1: {value1}, value 2: {value2}")
                 return False
 
         # These fields should not match between two images for a valid append
-        differentFields = ["AcquisitionTime", "Acquisition Number"]
+        differentFields = ["AcquisitionTime", "AcquisitionNumber"]
 
         for field in differentFields:
-            logger.debug("Verifying: %s", field)
-            field1 = meta1.get(field)
-            if field1 is None:
+            value1 = meta1.get(field, None)
+            if value1 is None:
                 continue
 
-            field2 = meta2.get(field)
-            if field2 is None:
+            value2 = meta2.get(field, None)
+            if value2 is None:
                 continue
 
-            if field1 == field2:
-                logger.debug("Metadata matches (shouldn't) on field: %s \
-                             (v1: %s, v2: %s)\n", field, field1, field2)
+            if value1 == value2:
+                logger.debug(f"Metadata matches (shouldn't) on field: {field}"
+                             f"(value 1: {value1}, value 2: {value2}")
                 return False
 
         return True
@@ -462,10 +448,10 @@ class BidsArchive:
             # Validate header match
             if not self._imagesAppendCompatible(incremental.image,
                                                 archiveImg):
-                raise ValidationError("Nifti headers failed validation!")
-            if not self._verifySidecarMetadataMatch(incremental.imgMetadata,
-                                                    self.getMetadata(imgPath)):
-                raise ValidationError("Image metadata failed validation!")
+                raise ValidationError("Nifti headers not append compatible")
+            if not self._metadataAppendCompatible(incremental.imgMetadata,
+                                                  self.getMetadata(imgPath)):
+                raise ValidationError("Image metadata not append compatible")
 
             # Build 4-D NIfTI if archive has 3-D, concat to 4-D otherwise
             incrementalData = getNiftiData(incremental.image)

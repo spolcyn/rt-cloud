@@ -75,22 +75,23 @@ def archiveHasMetadata(archive: BidsArchive, metadata: dict) -> bool:
     return True
 
 
-def incrementAcquisitionTime(incremental: BidsIncremental) -> None:
+def incrementAcquisitionValues(incremental: BidsIncremental) -> None:
     """
-    Increment the acquisition time in an image metadata dictionary to prepare
+    Increment the acquisition values in an image metadata dictionary to prepare
     for append an incremental to an archive built with the same source image.
     """
-    previousAcquisitionTime = incremental.getMetadataField("AcquisitionTime")
-    if previousAcquisitionTime is None:
-        return
-    else:
-        previousAcquisitionTime = float(previousAcquisitionTime)
-
     trTime = incremental.getMetadataField("RepetitionTime")
     trTime = 1.0 if trTime is None else float(trTime)
 
-    incremental.setMetadataField("AcquisitionTime",
-                                 previousAcquisitionTime + trTime)
+    fieldToIncrement = {'AcquisitionTime': trTime, 'AcquisitionNumber': 1.0}
+
+    for field, increment in fieldToIncrement.items():
+        previousValue = incremental.getMetadataField(field)
+        if previousValue is None:
+            continue
+        else:
+            previousValue = float(previousValue)
+            incremental.setMetadataField(field, previousValue + increment)
 
 
 """ ----- BEGIN TEST ARCHIVE QUERYING ----- """
@@ -213,6 +214,8 @@ def testNiftiHeaderValidation(sample4DNifti1, sample3DNifti1, sample2DNifti1,
     other4D.header["dim"][1:4] = other4D.header["dim"][1:4] * 2
     assert not BidsArchive._imagesAppendCompatible(sample4DNifti1,
                                                    other4D)
+    assert "Nifti headers not append compatible due to mismatch in dimensions "\
+           "and pixdim fields." in caplog.text
     # Reset
     other4D.header["dim"][1:4] = original4DHeader["dim"][1:4]
     assert other4D.header == original4DHeader
@@ -227,13 +230,72 @@ def testNiftiHeaderValidation(sample4DNifti1, sample3DNifti1, sample2DNifti1,
     assert other3D.header == original3DHeader
 
     # 2D and 4D are one too many dimensions apart
-    assert not BidsArchive._imagesAppendCompatible(sample2DNifti1,
+    other4D.header['dim'][0] = 2
+    assert not BidsArchive._imagesAppendCompatible(other4D,
                                                    sample4DNifti1)
 
 
 # Test metdata fields are correctly compared for append compatibility
-def testMetadataValidation():
-    pytest.skip()
+def testMetadataValidation(imageMetadata, caplog):
+    metadataCopy = imageMetadata.copy()
+
+    # Exact copies are not compatible as some metadata must be different
+    assert not BidsArchive._metadataAppendCompatible(imageMetadata,
+                                                     metadataCopy)
+
+    # Any metadata that must be different and is the same results in a failure
+    differentFields = ['AcquisitionTime', 'AcquisitionNumber']
+    for field in differentFields:
+        oldValue = metadataCopy[field]
+        metadataCopy[field] = float(oldValue) + 1
+        assert not BidsArchive._metadataAppendCompatible(imageMetadata,
+                                                         metadataCopy)
+        metadataCopy[field] = oldValue
+        assert f"Metadata matches (shouldn't) on field: {field}" in caplog.text
+
+    # Modify fields and ensure append now possible
+    for field in differentFields:
+        metadataCopy[field] = float(metadataCopy[field]) + 1
+    assert BidsArchive._metadataAppendCompatible(imageMetadata,
+                                                 metadataCopy)
+    # Test failure on sample of fields that must be the same
+    matchFields = ["Modality", "MagneticFieldStrength", "ImagingFrequency",
+                   "Manufacturer", "ManufacturersModelName", "InstitutionName",
+                   "InstitutionAddress", "DeviceSerialNumber", "StationName",
+                   "BodyPartExamined", "PatientPosition", "EchoTime",
+                   "ProcedureStepDescription", "SoftwareVersions",
+                   "MRAcquisitionType", "SeriesDescription", "ProtocolName",
+                   "ScanningSequence", "SequenceVariant", "ScanOptions",
+                   "SequenceName", "SpacingBetweenSlices", "SliceThickness",
+                   "ImageType", "RepetitionTime", "PhaseEncodingDirection",
+                   "FlipAngle", "InPlanePhaseEncodingDirectionDICOM",
+                   "ImageOrientationPatientDICOM", "PartialFourier"]
+
+    for field in matchFields:
+        oldValue = metadataCopy.get(field, None)
+
+        # If field not present, append should work
+        if oldValue is None:
+            assert BidsArchive._metadataAppendCompatible(imageMetadata,
+                                                         metadataCopy)
+        # If field is present, modify and ensure failure
+        else:
+            metadataCopy[field] = "not a valid value by any stretch of the word"
+            assert metadataCopy[field] != oldValue
+            assert not BidsArchive._metadataAppendCompatible(imageMetadata,
+                                                             metadataCopy)
+            metadataCopy[field] = oldValue
+            assert f"Metadata doesn't match on field: {field}" in caplog.text
+
+    # Test append-compatible when only one side has a particular metadata value
+    for field in (matchFields + differentFields):
+        for metadataDict in [imageMetadata, metadataCopy]:
+            oldValue = metadataDict.pop(field, None)
+            if oldValue is None:
+                continue
+            assert BidsArchive._metadataAppendCompatible(imageMetadata,
+                                                         metadataCopy)
+            metadataDict[field] = oldValue
 
 
 # Test images are correctly appended to an empty archive
@@ -251,7 +313,7 @@ def testEmptyArchiveAppend(validBidsI, imageMetadata, tmpdir):
 
 # Test images are correctly appended to an archive with just a 3-D image in it
 def test3DAppend(bidsArchive3D, validBidsI, imageMetadata):
-    incrementAcquisitionTime(validBidsI)
+    incrementAcquisitionValues(validBidsI)
     bidsArchive3D.appendIncremental(validBidsI)
     assert archiveHasMetadata(bidsArchive3D, imageMetadata)
     assert appendDataMatches(bidsArchive3D, validBidsI, startIndex=1)
@@ -300,7 +362,7 @@ def testConflictingMetadataAppend(bidsArchive3D, sample3DNifti1, imageMetadata):
 
 # Test images are correctly appended to an archive with a single 4-D image in it
 def test4DAppend(bidsArchive4D, validBidsI, imageMetadata):
-    incrementAcquisitionTime(validBidsI)
+    incrementAcquisitionValues(validBidsI)
     bidsArchive4D.appendIncremental(validBidsI)
 
     assert archiveHasMetadata(bidsArchive4D, imageMetadata)
@@ -313,7 +375,7 @@ def testSequenceAppend(bidsArchive4D, validBidsI, imageMetadata):
     BIDSI_LENGTH = 2
 
     for i in range(NUM_APPENDS):
-        incrementAcquisitionTime(validBidsI)
+        incrementAcquisitionValues(validBidsI)
         bidsArchive4D.appendIncremental(validBidsI)
 
     imagePath = bids_build_path(imageMetadata, BIDS_FILE_PATH_PATTERN) + '.nii'
