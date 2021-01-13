@@ -139,7 +139,7 @@ def testFailFindImage(bidsArchive3D, sample3DNifti1, imageMetadata, tmpdir):
         emptyArchive.addImage(None, "will fall anyway")
         emptyArchive.getMetadata("will fall anyway")
         emptyArchive.addMetadata({"will": "fail"}, "will fall anyway")
-        emptyArchive.stripIncremental(subject="will fall anyway",
+        emptyArchive.getIncremental(subject="will fall anyway",
                                       session="will fall anyway",
                                       task="will fall anyway",
                                       suffix="will fall anyway",
@@ -410,7 +410,7 @@ def testStripImage(bidsArchive3D, bidsArchive4D, sample3DNifti1, sample4DNifti1,
                    imageMetadata):
     # 3D Case
     reference = BidsIncremental(sample3DNifti1, imageMetadata)
-    incremental = bidsArchive3D.stripIncremental(
+    incremental = bidsArchive3D.getIncremental(
         imageMetadata["subject"],
         imageMetadata["session"],
         imageMetadata["task"],
@@ -427,7 +427,7 @@ def testStripImage(bidsArchive3D, bidsArchive4D, sample3DNifti1, sample4DNifti1,
     # Both the first and second image in the 4D archive should be identical
     reference = BidsIncremental(sample3DNifti1, imageMetadata)
     for index in range(0, 2):
-        incremental = bidsArchive4D.stripIncremental(
+        incremental = bidsArchive4D.getIncremental(
                         imageMetadata["subject"],
                         imageMetadata["session"],
                         imageMetadata["task"],
@@ -445,7 +445,7 @@ def testStripImage(bidsArchive3D, bidsArchive4D, sample3DNifti1, sample4DNifti1,
 # present in the archive
 def testStripNoMatchingImage(bidsArchive4D, imageMetadata):
     imageMetadata['subject'] = 'notPresent'
-    incremental = bidsArchive4D.stripIncremental(
+    incremental = bidsArchive4D.getIncremental(
         imageMetadata["subject"],
         imageMetadata["session"],
         imageMetadata["task"],
@@ -478,7 +478,7 @@ def testStripNoMatchingMetdata(bidsArchive4D, imageMetadata, caplog, tmpdir):
 
     # Without the sidecar metadata, not enough information for an incremental
     with pytest.raises(ValidationError):
-        bidsArchive4D.stripIncremental(imageMetadata["subject"],
+        bidsArchive4D.getIncremental(imageMetadata["subject"],
                                        imageMetadata["session"],
                                        imageMetadata["task"],
                                        imageMetadata["suffix"],
@@ -494,7 +494,7 @@ def testStripSliceIndexOutOfBounds(bidsArchive3D, bidsArchive4D, imageMetadata,
                                    caplog):
     # Negative case
     outOfBoundsIndex = -1
-    incremental = bidsArchive3D.stripIncremental(
+    incremental = bidsArchive3D.getIncremental(
         imageMetadata["subject"],
         imageMetadata["session"],
         imageMetadata["task"],
@@ -507,7 +507,7 @@ def testStripSliceIndexOutOfBounds(bidsArchive3D, bidsArchive4D, imageMetadata,
 
     # 3D case
     outOfBoundsIndex = 1
-    incremental = bidsArchive3D.stripIncremental(
+    incremental = bidsArchive3D.getIncremental(
         imageMetadata["subject"],
         imageMetadata["session"],
         imageMetadata["task"],
@@ -522,7 +522,7 @@ def testStripSliceIndexOutOfBounds(bidsArchive3D, bidsArchive4D, imageMetadata,
     # 4D case
     outOfBoundsIndex = 4
     archiveLength = 2
-    incremental = bidsArchive4D.stripIncremental(
+    incremental = bidsArchive4D.getIncremental(
         imageMetadata["subject"],
         imageMetadata["session"],
         imageMetadata["task"],
@@ -539,7 +539,7 @@ def testStripSliceIndexOutOfBounds(bidsArchive3D, bidsArchive4D, imageMetadata,
 # exactly
 def testStripNoParameterMatch(bidsArchive4D, imageMetadata, caplog):
     # Test non-existent otherLabels
-    incremental = bidsArchive4D.stripIncremental(
+    incremental = bidsArchive4D.getIncremental(
         imageMetadata["subject"],
         imageMetadata["session"],
         imageMetadata["task"],
@@ -561,7 +561,7 @@ def testStripNoParameterMatch(bidsArchive4D, imageMetadata, caplog):
         oldValue = imageMetadata[argName]
         imageMetadata[argName] = argValue
 
-        incremental = bidsArchive4D.stripIncremental(
+        incremental = bidsArchive4D.getIncremental(
             subject=imageMetadata["subject"],
             session=imageMetadata["session"],
             task=imageMetadata["task"],

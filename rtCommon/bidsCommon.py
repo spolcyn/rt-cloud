@@ -176,7 +176,7 @@ def metadataFromProtocolName(protocolName: str) -> dict:
     return foundEntities
 
 
-def getMetadata(dicomImg: pydicom.dataset.Dataset) -> Tuple[dict, dict]:
+def getDicomMetadata(dicomImg: pydicom.dataset.Dataset) -> Tuple[dict, dict]:
     """
     Returns the public and private metadata from the provided DICOM image.
 

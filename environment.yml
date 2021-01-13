@@ -28,5 +28,6 @@ dependencies:
   - nodejs
   - rpyc
   - pip:
+    - pybids
     - watchdog
     - inotify

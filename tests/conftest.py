@@ -28,7 +28,7 @@ from rtCommon.bidsCommon import (
     BIDS_DIR_PATH_PATTERN,
     BIDS_FILE_PATTERN,
     adjustTimeUnits,
-    getMetadata,
+    getDicomMetadata,
     getNiftiData,
 )
 from rtCommon.bidsIncremental import BidsIncremental
@@ -71,7 +71,7 @@ def dicomImage(dicomMetadataSample) -> pydicom.dataset.Dataset:
 # Public metadata for test DICOM file
 @pytest.fixture
 def dicomImageMetadata(dicomImage):
-    public, _ = getMetadata(dicomImage)
+    public, _ = getDicomMetadata(dicomImage)
     return public
 
 
@@ -193,7 +193,7 @@ def bidsArchiveMultipleRuns(tmpdir, sample4DNifti1, imageMetadata):
     imageMetadata['run'] = int(imageMetadata['run']) + 1
     logger.debug("Run from dict: %s", imageMetadata['run'])
     incremental = BidsIncremental(sample4DNifti1, imageMetadata)
-    logger.debug("Run: %d", incremental.getMetadataField('run'))
+    logger.debug("Run: %d", incremental.getDicomMetadataField('run'))
     archive.appendIncremental(incremental)
 
     return archive

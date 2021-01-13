@@ -75,7 +75,7 @@ class BidsDataset:
     def pathExists(self, path: str) -> bool:
         return self.fileExists(path) or self.dirExists(path)
 
-    def findImage(self, path: str) -> nib.Nifti1Image:
+    def getImage(self, path: str) -> nib.Nifti1Image:
         """
         Find an image within the dataset, if it exists.
         """
@@ -127,9 +127,9 @@ class BidsDataset:
         if layoutUpdateRequired:
             self._updateLayout()
 
-    def findMetadata(self, path: str) -> dict:
+    def getFileMetadata(self, path: str) -> dict:
         """
-        Finds metadata for the file at path in the dataset. For an image file,
+        Gets metadata for the file at path in the dataset. For an image file,
         this will include the entities embedded in the pathname (e.g, 'subject')
         as well as the metdata found in any sidecar metadata files.
 
@@ -233,7 +233,7 @@ class BidsArchive:
 
     @failIfEmpty
     def getImage(self, path: str) -> nib.Nifti1Image:
-        return self.dataset.findImage(path)
+        return self.dataset.getImage(path)
 
     @failIfEmpty
     def addImage(self, img: nib.Nifti1Image, path: str) -> None:
@@ -244,7 +244,7 @@ class BidsArchive:
 
     @failIfEmpty
     def getMetadata(self, path: str) -> dict:
-        return self.dataset.findMetadata(path)
+        return self.dataset.getFileMetadata(path)
 
     @failIfEmpty
     def addMetadata(self, metadata: dict, path: str) -> None:
@@ -488,9 +488,9 @@ class BidsArchive:
                                    specified, can't append")
 
     @failIfEmpty
-    def stripIncremental(self, subject: str, session: str, task: str,
-                         suffix: str, dataType: str, sliceIndex: int = 0,
-                         otherLabels: dict = None):
+    def getIncremental(self, subject: str, session: str, task: str, suffix: str,
+                       dataType: str, sliceIndex: int = 0,
+                       otherLabels: dict = None):
         """
         Creates a BIDS-Incremental file from the specified part of the BIDS
         Archive.

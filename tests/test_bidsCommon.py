@@ -5,7 +5,7 @@ import pytest
 
 from rtCommon.bidsCommon import (
     adjustTimeUnits,
-    getMetadata,
+    getDicomMetadata,
     getNiftiData,
     isNiftiPath,
     isJsonPath,
@@ -67,10 +67,10 @@ def testTimeUnitAdjustment():
 # dictionaries by ensuring a sample of public keys have the right value
 def testMetadataExtraction(dicomImage, dicomMetadataSample):
     with pytest.raises(ValidationError):
-        getMetadata("this isn't a pydicom dataset")
+        getDicomMetadata("this isn't a pydicom dataset")
 
     # Test a sampling of field names and values extracted by hand
-    public, private = getMetadata(dicomImage)
+    public, private = getDicomMetadata(dicomImage)
     for field, value in dicomMetadataSample.items():
         assert public.get(field) == str(value)
 

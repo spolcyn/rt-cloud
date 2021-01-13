@@ -247,17 +247,27 @@ class BidsIncremental:
     # getSubject, getTask
     def getMetadataField(self, field: str, strict: bool = False) -> str:
         """
-        Retrieve value for the metadata field, if it exists.
+        Get value for the field in the incremental's metadata, if it exists.
 
         Args:
             field: Metadata field to retrieve a value for.
-            strict: Only allow getting of official BIDS entity fields.
+            strict: Only allow getting official BIDS entity fields.
 
         Returns:
-            Entity's value, or None if the entity isn't present in the metadata
+            Entity's value, or None if the entity isn't present in the metadata.
 
         Raises:
             ValueError if 'strict' is True and 'field' is not a BIDS entity.
+
+        Examples:
+            >>> incremental.getMetadataField('run')
+            1
+            >>> incremental.getMetadataField('task')
+            'faces'
+            >>> incremental.getMetadataField('RepetitionTime')
+            1.5
+            >>> incremental.getMetadataField('RepetitionTime', strict=True)
+            ValueError: RepetitionTime is not a valid BIDS entity name
         """
         if strict:
             self._exceptIfNotBids(field)
@@ -385,6 +395,7 @@ class BidsIncremental:
 
         Returns:
             Path string relative to root of the imaginary dataset.
+
         Examples:
             >>> print(bidsi.dataDirPath())
             /sub-01/ses-2011/anat/
