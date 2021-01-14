@@ -33,16 +33,37 @@ bc.set_option('extension_initial_dot', True)
 logger = logging.getLogger(__name__)
 
 
-class BidsDataset:
-    def __init__(self, path: str):
-        self.name = os.path.basename(os.path.normpath(path))
-        # logger.debug("Loading dataset \"%s\" from: %s", self.name, path)
-        self.data = BIDSLayout(path)
-        # logger.debug("Dataset info: %s", self.data)
+def failIfEmpty(func):
+    def emptyFailWrapFunction(*args, **kwargs):
+        if args[0].data is None:
+            raise StateError("Dataset empty")
+        else:
+            return func(*args, **kwargs)
+
+    return emptyFailWrapFunction
+
+
+class BidsArchive:
+    """
+    Represents a BIDS Archive
+    """
+    def __init__(self, rootPath: str):
+        self.rootPath = rootPath
+        try:
+            self.data = BIDSLayout(rootPath)
+        except Exception as e:
+            logger.info("Failed to open dataset at %s (%s)",
+                        self.rootPath, str(e))
+            self.data: BIDSLayout = None
 
     def __str__(self):
         return str(self.data)
 
+    # Enable accessing underlying BIDSLayout properties without inheritance
+    def __getattr__(self, attr):
+        return getattr(self.data, attr)
+
+    """ Utility functions """
     @staticmethod
     def _stripRoot(relPath: str) -> str:
         """
@@ -59,9 +80,12 @@ class BidsDataset:
         """
         Makes an absolute path from the relative path within the dataset.
         """
-        return os.path.join(self.data.root, self._stripRoot(relPath))
+        return os.path.join(self.rootPath, self._stripRoot(relPath))
 
     def fileExists(self, relPath: str) -> bool:
+        if self.data is None:
+            return False
+
         # search for matching BIDS file in the dataset
         relPath = self._stripRoot(relPath)
         result = self.data.get_file(self._stripRoot(relPath))
@@ -69,12 +93,15 @@ class BidsDataset:
         return result is not None
 
     def dirExists(self, relPath: str) -> bool:
+        if self.data is None:
+            return False
         # search for matching directory in the dataset
         return os.path.isdir(self.absPathFromRelPath(relPath))
 
     def pathExists(self, path: str) -> bool:
         return self.fileExists(path) or self.dirExists(path)
 
+    @failIfEmpty
     def getImage(self, path: str) -> nib.Nifti1Image:
         """
         Find an image within the dataset, if it exists.
@@ -111,7 +138,7 @@ class BidsDataset:
         # TODO(spolcyn): Find if there's a more efficient way to update the
         # index that doesn't rely on implementation details of the PyBids (ie,
         # the SQL DB it uses)
-        self.data = BIDSLayout(self.data.root)
+        self.data = BIDSLayout(self.rootPath)
 
     def addImage(self, img: nib.Nifti1Image, path: str) -> None:
         """
@@ -178,77 +205,25 @@ class BidsDataset:
 
         return matchingFiles
 
-
-def failIfEmpty(func):
-    def emptyFailWrapFunction(*args, **kwargs):
-        if args[0].dataset is None:
-            raise StateError("Dataset empty")
-        else:
-            return func(*args, **kwargs)
-
-    return emptyFailWrapFunction
-
-
-class BidsArchive:
-    """
-    Represents a BIDS Archive
-    """
-    def __init__(self, rootPath: str):
-        self.rootPath = rootPath
-        try:
-            self.openDataset(self.rootPath)
-        except Exception as e:
-            logger.info("Failed to open dataset at %s. %s",
-                        self.rootPath, str(e))
-            self.dataset: BIDSLayout = None
-
-    def __str__(self):
-        return str(self.dataset)
-
     # Used to update the archive if any on-disk changes have happened
     def _update(self):
-        if self.dataset:
-            self.dataset._updateLayout()
+        if self.data:
+            self._updateLayout()
 
     @failIfEmpty
     def subjects(self) -> List:
-        return self.dataset.data.get_subjects()
+        return self.data.get_subjects()
 
     def isEmpty(self) -> bool:
-        return (self.dataset is None)
-
-    def openDataset(self, rootPath: str):
-        self.dataset = BidsDataset(rootPath)
-
-    @failIfEmpty
-    def pathExists(self, path: str) -> bool:
-        """
-        Check whether the provided path is valid within the archive.
-        """
-        return self.dataset.pathExists(path)
+        return (self.data is None)
 
     @failIfEmpty
     def getFilesForPath(self, path: str) -> List:
-        return self.dataset.findFiles(path)
-
-    @failIfEmpty
-    def getImage(self, path: str) -> nib.Nifti1Image:
-        return self.dataset.getImage(path)
-
-    @failIfEmpty
-    def addImage(self, img: nib.Nifti1Image, path: str) -> None:
-        # TODO(spolcyn): Change behavior to initialize dafault archive
-        # information if enough data is provided in the path to be BIDS
-        # compatible
-        self.dataset.addImage(img, path)
+        return self.findFiles(path)
 
     @failIfEmpty
     def getMetadata(self, path: str) -> dict:
-        return self.dataset.getFileMetadata(path)
-
-    @failIfEmpty
-    def addMetadata(self, metadata: dict, path: str) -> None:
-        self.dataset.addMetadata(metadata, path)
+        return self.getFileMetadata(path)
 
     @staticmethod
     def _imagesAppendCompatible(img1: nib.Nifti1Image, img2: nib.Nifti1Image):
@@ -439,7 +414,7 @@ class BidsArchive:
         # 2.3) Neither image nor path is valid for provided archive; fail append
         if self.isEmpty() and makePath:
             incremental.writeToArchive(self.rootPath)
-            self.openDataset(self.rootPath)
+            self._updateLayout()
 
         elif self.pathExists(imgPath):
             logger.debug("Image exists in archive, appending")
@@ -466,6 +441,8 @@ class BidsArchive:
             if len(archiveData.shape) == 3:
                 archiveData = np.expand_dims(archiveData, 3)
 
+            # TODO(spolcyn): Replace this with the patched version of
+            # concat_images
             newArchiveData = np.concatenate((archiveData, incrementalData),
                                             axis=3)
 
@@ -477,15 +454,15 @@ class BidsArchive:
 
         # 2.2) Image doesn't exist in archive, but rest of the path is valid for
         # the archive; create new Nifti file within the archive
-        elif self.pathExists(dataDirPath) or makePath is True:
+        elif self.pathExists(dataDirPath) or makePath:
             logger.debug("Image doesn't exist in archive, creating")
 
             self.addImage(incremental.image, imgPath)
             self.addMetadata(incremental.imgMetadata, metadataPath)
 
         else:
-            raise ValidationError("No valid archive path for image and no override \
-                                   specified, can't append")
+            raise StateError("No valid archive path for image and no override"
+                             "specified, can't append")
 
     @failIfEmpty
     def getIncremental(self, subject: str, session: str, task: str, suffix: str,

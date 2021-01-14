@@ -49,7 +49,7 @@ def archiveHasMetadata(archive: BidsArchive, metadata: dict) -> bool:
     """
 
     # Compare metadata reported by PyBids to metadata we expect has been written
-    bidsLayout = archive.dataset.data
+    bidsLayout = archive.data
     archiveMetadata = {}
     for f in bidsLayout.get(return_type='filename'):
         if not isNiftiPath(f):
@@ -111,6 +111,16 @@ def testEmptyArchiveCreation(tmpdir):
     assert BidsArchive(datasetRoot) is not None
 
 
+# Test empty determiniation
+def testIsEmpty(tmpdir, bidsArchive3D):
+    datasetRoot = Path(tmpdir, "bids-archive")
+    archive = BidsArchive(datasetRoot)
+    assert archive is not None
+    assert archive.isEmpty()
+
+    assert not bidsArchive3D.isEmpty()
+
+
 # Test finding an image in an archive
 def testFindImage(bidsArchive3D, sample3DNifti1, imageMetadata):
     imagePath = bids_build_path(imageMetadata, BIDS_FILE_PATH_PATTERN) \
@@ -140,10 +150,10 @@ def testFailFindImage(bidsArchive3D, sample3DNifti1, imageMetadata, tmpdir):
         emptyArchive.getMetadata("will fall anyway")
         emptyArchive.addMetadata({"will": "fail"}, "will fall anyway")
         emptyArchive.getIncremental(subject="will fall anyway",
-                                      session="will fall anyway",
-                                      task="will fall anyway",
-                                      suffix="will fall anyway",
-                                      dataType="will fall anyway")
+                                    session="will fall anyway",
+                                    task="will fall anyway",
+                                    suffix="will fall anyway",
+                                    dataType="will fall anyway")
 
 
 """ ----- BEGIN TEST APPENDING ----- """
@@ -322,16 +332,17 @@ def test3DAppend(bidsArchive3D, validBidsI, imageMetadata):
 # Test appending raises error if no already existing image to append to and
 # specified not to create path
 def testAppendNoMakePath(bidsArchive3D, validBidsI, tmpdir):
-    # Appending to empty archive
+    # Append to empty archive specifying not to make any files or directories
     datasetRoot = Path(tmpdir, testEmptyArchiveAppend.__name__)
     with pytest.raises(StateError):
         BidsArchive(datasetRoot).appendIncremental(validBidsI, makePath=False)
 
-    # Appending to populated archive
+    # Append to populated archive in a way that would require new directories
+    # and files without allowing it
     validBidsI.setMetadataField('subject', 'invalidSubject')
     validBidsI.setMetadataField('run', 42)
 
-    with pytest.raises(ValidationError):
+    with pytest.raises(StateError):
         bidsArchive3D.appendIncremental(validBidsI, makePath=False)
 
 
@@ -479,10 +490,10 @@ def testStripNoMatchingMetdata(bidsArchive4D, imageMetadata, caplog, tmpdir):
     # Without the sidecar metadata, not enough information for an incremental
     with pytest.raises(ValidationError):
         bidsArchive4D.getIncremental(imageMetadata["subject"],
-                                       imageMetadata["session"],
-                                       imageMetadata["task"],
-                                       imageMetadata["suffix"],
-                                       "func")
+                                     imageMetadata["session"],
+                                     imageMetadata["task"],
+                                     imageMetadata["suffix"],
+                                     "func")
 
     # Check the logging for the warning message
     assert "Archive didn't contain any matching metadata" in caplog.text
