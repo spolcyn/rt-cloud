@@ -1,4 +1,4 @@
-# Note: Could modularize this further by creating a fixtures dir and importing
+# NOTE: Could modularize this further by creating a fixtures dir and importing
 # See: https://gist.github.com/peterhurford/09f7dcda0ab04b95c026c60fa49c2a68
 import json
 import logging
@@ -11,16 +11,13 @@ import nibabel as nib
 import pydicom
 import pytest
 
+
 from common import (
     test_dicomPath,
     test_3DNifti1Path,
     test_3DNifti2Path,
     test_4DNifti1Path,
     test_4DNifti2Path
-)
-from rtCommon.imageHandling import (
-    readDicomFromFile,
-    readNifti
 )
 from rtCommon.bidsArchive import BidsArchive
 from rtCommon.bidsCommon import (
@@ -32,8 +29,33 @@ from rtCommon.bidsCommon import (
     getNiftiData,
 )
 from rtCommon.bidsIncremental import BidsIncremental
+from tests.createTestNiftis import (
+    createNiftiTestFiles,
+    deleteNiftiTestFiles,
+    haveAllNiftiTestFiles,
+)
+from rtCommon.imageHandling import (
+    readDicomFromFile,
+    readNifti
+)
 
 logger = logging.getLogger(__name__)
+
+RECREATE_TEST_NIFTIS_KEY = "recreateTestNiftis"
+
+
+def pytest_addoption(parser):
+    # Enable forced re-creation of NIfTI test files
+    parser.addoption("--recreate-test-niftis", action="store_true",
+                     dest=RECREATE_TEST_NIFTIS_KEY)
+
+
+def pytest_configure(config) -> None:
+    # Recreate test files if requested or if any are missing
+    recreateTestNiftis = config.getoption(RECREATE_TEST_NIFTIS_KEY, False)
+    if recreateTestNiftis or not haveAllNiftiTestFiles():
+        deleteNiftiTestFiles()
+        createNiftiTestFiles()
 
 
 """ BEGIN DICOM RELATED FIXTURES """
