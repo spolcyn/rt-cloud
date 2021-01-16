@@ -100,7 +100,7 @@ def incrementAcquisitionValues(incremental: BidsIncremental) -> None:
 # Test archive's string output is correct
 def testStringOutput(bidsArchive3D):
     logger.debug(str(bidsArchive3D))
-    outPattern = r"^BIDS Layout: \S+ \| Subjects: \d+ \| Sessions: \d+ " \
+    outPattern = r"^Root: \S+ \| Subjects: \d+ \| Sessions: \d+ " \
                  r"\| Runs: \d+$"
     assert re.fullmatch(outPattern, str(bidsArchive3D)) is not None
 

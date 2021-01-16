@@ -45,10 +45,36 @@ def failIfEmpty(func):
 
 class BidsArchive:
     """
-    Represents a BIDS Archive
+    BidsArchive represents a BIDS-formatted dataset on disk. It offers an API
+    for querying that dataset, and also adds special methods to add
+    BidsIncrementals to the dataset and extract portions of the dataset as
+    BidsIncrementals.
     """
     def __init__(self, rootPath: str):
+        """
+        Create a BidsArchive using the dataset pointed to by rootPath.
+
+        Args:
+            rootPath: Path to the archive on disk (either absolute or relative
+            to current working directory).
+
+        Examples:
+            >>> archive = BidsArchive('dataset')
+            >>> str(archive)
+            Root: ...t-cloud/docs/tutorials/dataset | Subjects: 1 |
+            Sessions: 0 | Runs: 1
+            >>> archive = BidsArchive('/tmp/downloads/dataset')
+            >>> str(archive)
+            Root: /tmp/downloads/dataset | Subjects: 20 |
+            Sessions: 3 | Runs: 2
+        """
         self.rootPath = rootPath
+        # Formatting initialization logic this way enables the creation of an
+        # empty BIDS archive that an incremntal can then be appended to
+        # TODO(spolcyn): Decide whether this additional capability is worth the
+        # increased complexity in the code (alternative would be just passing
+        # the exceptions back up, and workflow would become writing the
+        # first incremental to disk, then opening the BidsArchive from that)
         try:
             self.data = BIDSLayout(rootPath)
         except Exception as e:
@@ -57,7 +83,11 @@ class BidsArchive:
             self.data: BIDSLayout = None
 
     def __str__(self):
-        return str(self.data)
+        out = str(self.data)
+        if 'BIDS Layout' in out:
+            out = out.replace('BIDS Layout', 'Root')
+
+        return out
 
     # Enable accessing underlying BIDSLayout properties without inheritance
     def __getattr__(self, attr):
