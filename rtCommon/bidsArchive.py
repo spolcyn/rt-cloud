@@ -44,15 +44,13 @@ def failIfEmpty(func):
 
 
 class BidsArchive:
-    """
-    BidsArchive represents a BIDS-formatted dataset on disk. It offers an API
-    for querying that dataset, and also adds special methods to add
-    BidsIncrementals to the dataset and extract portions of the dataset as
-    BidsIncrementals.
-    """
+
     def __init__(self, rootPath: str):
         """
-        Create a BidsArchive using the dataset pointed to by rootPath.
+        BidsArchive represents a BIDS-formatted dataset on disk. It offers an
+        API for querying that dataset, and also adds special methods to add
+        BidsIncrementals to the dataset and extract portions of the dataset as
+        BidsIncrementals.
 
         Args:
             rootPath: Path to the archive on disk (either absolute or relative
