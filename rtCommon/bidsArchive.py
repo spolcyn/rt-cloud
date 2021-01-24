@@ -5,13 +5,17 @@ bidsArchive.py
 Implements interacting with an on-disk BIDS Archive.
 
 -----------------------------------------------------------------------------"""
+import functools
 import json
 import logging
 import os
 from typing import List
 
 from bids import BIDSLayout
-from bids.layout import parse_file_entities as bids_parse_file_entities
+from bids.layout import (
+    parse_file_entities as bids_parse_file_entities,
+    BIDSImageFile
+)
 from bids.layout.writing import build_path as bids_build_path
 import bids.config as bc
 import nibabel as nib
@@ -34,6 +38,7 @@ logger = logging.getLogger(__name__)
 
 
 def failIfEmpty(func):
+    @functools.wraps(func)
     def emptyFailWrapFunction(*args, **kwargs):
         if args[0].data is None:
             raise StateError("Dataset empty")
@@ -136,15 +141,66 @@ class BidsArchive:
         return self.fileExists(path) or self.dirExists(path)
 
     @failIfEmpty
-    def getImage(self, path: str) -> nib.Nifti1Image:
+    def getImages(self, entities: dict,
+                  matchExact: bool = False) -> List[nib.Nifti1Image]:
         """
-        Find an image within the dataset, if it exists.
-        """
-        # Validate extension and file existence
-        if isNiftiPath(path) and self.fileExists(path):
-            return readNifti(self.absPathFromRelPath(path))
+        Return all images that have the provided entities. If no entities are
+        provided, then all images are returned.
 
-        return None
+        Args:
+            entities: Dictionary of BIDS entity-value mappings to filter the
+                images in the archive on.
+            matchExact: Only return images that have exactly the provided
+                entities, no more and no less.
+
+        Returns:
+            A list of images matching the provided entities (empty if there are
+            no matches, and containing at most a single image if an exact match
+            is requested).
+
+        Examples:
+            >>> archive = BidsArchive('.')
+            >>> entityDict = {'subject': '01', 'datatype': 'func'}
+            >>> images = archive.getImages(entityDict)
+            >>> print(images[0].shape)
+            (64, 64, 27, 3)
+
+            An exact match must have exactly the same entities; since images
+            must also have the task entity in their filename, the above
+            entityDict will yield no exact matches in the archive.
+
+            >>> images = archive.getImages(entityDict, matchExact=True)
+            ERROR "No images were an exact match for: {'subject': '01',
+            'datatype': 'func'}"
+            >>> print(len(images))
+            0
+        """
+        # Validate image extension specified
+        extension = entities.pop('extension', None)
+        if extension is not None:
+            if extension != '.nii' and extension != '.nii.gz':
+                raise ValueError('Extension for images must be either .nii or '
+                                 '.nii.gz')
+
+        results = self.data.get(**entities)
+        results = [r for r in results if type(r) is BIDSImageFile]
+
+        if len(results) == 0:
+            logger.error(f"No images have all provided entities: {entities}")
+            return []
+        elif matchExact:
+            for result in results:
+                # Only BIDSImageFiles are checked, so extension is irrelevant
+                result_entities = result.get_entities()
+                result_entities.pop('extension', None)
+
+                if result_entities == entities:
+                    return [result.get_image()]
+
+            logger.error(f"No images were an exact match for: {entities}")
+            return []
+        else:
+            return [r.get_image() for r in results]
 
     def _ensurePathExists(self, relPath: str):
         """
@@ -228,7 +284,6 @@ class BidsArchive:
 
         """
         # Get all files
-        # TODO(spolcyn): Make more efficient using pybids internal query?
         files = self.data.get_files()
         matchingFiles = []
         absPath = self.absPathFromRelPath(path)
@@ -448,7 +503,16 @@ class BidsArchive:
 
         elif self.pathExists(imgPath):
             logger.debug("Image exists in archive, appending")
-            archiveImg = self.getImage(imgPath)
+
+            # Supplement entity dict with file name entities that the BIDSLayout
+            # returns that aren't official bids entities
+            entityDict = incremental.entities
+            entityDict['datatype'] = incremental.datatype
+            entityDict['suffix'] = incremental.suffix
+
+            # The one exact match must exist because the path exists
+            archiveImg = self.getImages(entityDict,
+                                        matchExact=True)[0]
 
             # Validate header match
             if not self._imagesAppendCompatible(incremental.image,
@@ -496,7 +560,7 @@ class BidsArchive:
 
     @failIfEmpty
     def getIncremental(self, subject: str, session: str, task: str, suffix: str,
-                       dataType: str, sliceIndex: int = 0,
+                       datatype: str, sliceIndex: int = 0,
                        otherLabels: dict = None):
         """
         Creates a BIDS-Incremental file from the specified part of the BIDS
@@ -511,7 +575,7 @@ class BidsArchive:
             suffix: BIDS suffix for file, which is image contrast for fMRI
                 (bold, cbv, or phase)
             sliceIndex: Index of 3_D image to select in a 4-D sequence of images
-            dataType: Type of data to pull (common types: anat, func, dwi, fmap)
+            datatype: Type of data to pull (common types: anat, func, dwi, fmap)
                 This string must be the same as the name of the directory
                 containing the image data.
             otherLabels: Other entity labels specifying appropriate file to pull
@@ -532,7 +596,7 @@ class BidsArchive:
             return None
 
         metadata = {'subject': subject, 'session': session, 'task': task,
-                    'suffix': suffix, 'datatype': dataType}
+                    'suffix': suffix, 'datatype': datatype}
         archivePath = bids_build_path(metadata, BIDS_DIR_PATH_PATTERN)
 
         matchingFilePaths = self.getFilesForPath(archivePath)

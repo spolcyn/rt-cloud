@@ -25,6 +25,7 @@ from rtCommon.bidsCommon import (
     DATASET_DESC_REQ_FIELDS,
     DEFAULT_DATASET_DESC,
     adjustTimeUnits,
+    filterEntities,
     getNiftiData,
     loadBidsEntities,
     metadataFromProtocolName,
@@ -310,17 +311,25 @@ class BidsIncremental:
             self._exceptIfNotBids(field)
         self._imgMetadata.pop(field, None)
 
+    @property
     def suffix(self) -> str:
         return self._imgMetadata.get("suffix")
 
     # Additional methods to access internal BIDS-I data
-    def dataType(self):
+    @property
+    def datatype(self) -> str:
         """ func or anat """
         return self._imgMetadata.get("datatype")
 
     @property
     def imgMetadata(self):
         return self._imgMetadata.copy()
+
+    @property
+    def entities(self) -> dict:
+        """ Return new dictionary with the BIDS entities associated with this
+        BIDS incremental """
+        return filterEntities(self._imgMetadata)
 
     # Getting internal NIfTI data
     def imageData(self) -> np.ndarray:
@@ -422,7 +431,7 @@ class BidsIncremental:
         if session:
             pathElements.append('ses-' + session)
 
-        pathElements.append(self.dataType())
+        pathElements.append(self.datatype)
 
         dataDirPath = os.path.join(datasetRoot, *pathElements)
         os.makedirs(dataDirPath, exist_ok=True)

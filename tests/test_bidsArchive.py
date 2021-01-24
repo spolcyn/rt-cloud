@@ -13,6 +13,7 @@ from rtCommon.bidsIncremental import BidsIncremental
 from rtCommon.bidsCommon import (
     BIDS_FILE_PATH_PATTERN,
     BidsFileExtension,
+    filterEntities,
     getNiftiData,
     isNiftiPath,
 )
@@ -27,9 +28,10 @@ logger = logging.getLogger(__name__)
 # Helper for checking data after append
 def appendDataMatches(archive: BidsArchive, reference: BidsIncremental,
                       startIndex: int = 0, endIndex: int = -1):
-    imagePath = bids_build_path(reference.imgMetadata, BIDS_FILE_PATH_PATTERN) \
-        + BidsFileExtension.IMAGE.value
-    imageFromArchive = archive.getImage(imagePath)
+    entities = filterEntities(reference.imgMetadata)
+    images = archive.getImages(entities)
+    assert len(images) == 1
+    imageFromArchive = images[0]
 
     fullImageData = getNiftiData(imageFromArchive)
     if endIndex == -1:
@@ -131,30 +133,60 @@ def testIsEmpty(tmpdir, bidsArchive3D):
 
 
 # Test finding an image in an archive
-def testFindImage(bidsArchive3D, sample3DNifti1, imageMetadata):
-    imagePath = bids_build_path(imageMetadata, BIDS_FILE_PATH_PATTERN) \
-        + BidsFileExtension.IMAGE.value
-    archiveImage = bidsArchive3D.getImage(imagePath)
+def testGetImages(bidsArchive3D, sample3DNifti1, bidsArchiveMultipleRuns,
+                  imageMetadata):
+    entities = ['subject', 'task', 'session']
+    dataDict = {key: imageMetadata[key] for key in entities}
+
+    archiveImages = bidsArchive3D.getImages(dataDict, matchExact=False)
+    assert len(archiveImages) == 1
+
+    archiveImage = archiveImages[0]
     assert archiveImage.header == sample3DNifti1.header
     assert np.array_equal(getNiftiData(archiveImage),
                           getNiftiData(sample3DNifti1))
 
+    # Exact match requires set of provided entities and set of entities in a
+    # filename to be exactly the same (1-1 mapping); since 'run' isn't provided,
+    # an exact match will fail for the multiple runs archive, which has files
+    # with the 'run' entity, but will succeed for a non-exact matching, as the
+    # provided entities match a subset of the file entities
+    archiveImages = bidsArchiveMultipleRuns.getImages(dataDict, matchExact=True)
+    assert archiveImages == []
+
+    matchingDict = dataDict.copy()
+    matchingDict.update({'datatype': 'func', 'suffix': 'bold', 'run': 1})
+    archiveImages = bidsArchiveMultipleRuns.getImages(matchingDict,
+                                                      matchExact=True)
+    assert archiveImages != []
+
+    archiveImages = bidsArchiveMultipleRuns.getImages(dataDict,
+                                                      matchExact=False)
+    assert archiveImages != []
+    assert len(archiveImages) == 2
+
 
 # Test failing to find an image in an archive
-def testFailFindImage(bidsArchive3D, sample3DNifti1, imageMetadata, tmpdir):
-    imageMetadata['subject'] = 'nonValidSubject'
-    imagePath = bids_build_path(imageMetadata, BIDS_FILE_PATH_PATTERN) \
-        + BidsFileExtension.IMAGE.value
-    assert bidsArchive3D.getImage(imagePath) is None
+def testFailFindImage(bidsArchive3D, sample3DNifti1, imageMetadata, caplog):
+    dataDict = {'subject': 'nonValidSubject'}
+    assert bidsArchive3D.getImages(dataDict) == []
+    assert f'No images have all provided entities: {dataDict}' in caplog.text
 
-    # Test failing when dataset is empty
+    dataDict['subject'] = imageMetadata['subject']
+    dataDict['task'] = 'invalidTask'
+    assert bidsArchive3D.getImages(dataDict) == []
+    assert f'No images have all provided entities: {dataDict}' in caplog.text
+
+
+# Test failing when dataset is empty
+def testFailEmpty(tmpdir):
     datasetRoot = Path(tmpdir, "bids-archive")
     emptyArchive = BidsArchive(datasetRoot)
 
     with pytest.raises(StateError):
         emptyArchive.pathExists("will fail anyway")
         emptyArchive.getFilesForPath("will fail anyway")
-        emptyArchive.getImage("will fail anyway")
+        emptyArchive.getImages("will fail anyway")
         emptyArchive.addImage(None, "will fall anyway")
         emptyArchive.getMetadata("will fall anyway")
         emptyArchive.addMetadata({"will": "fail"}, "will fall anyway")
@@ -162,7 +194,7 @@ def testFailFindImage(bidsArchive3D, sample3DNifti1, imageMetadata, tmpdir):
                                     session="will fall anyway",
                                     task="will fall anyway",
                                     suffix="will fall anyway",
-                                    dataType="will fall anyway")
+                                    datatype="will fall anyway")
 
 
 """ ----- BEGIN TEST APPENDING ----- """
@@ -398,8 +430,8 @@ def testSequenceAppend(bidsArchive4D, validBidsI, imageMetadata):
         incrementAcquisitionValues(validBidsI)
         bidsArchive4D.appendIncremental(validBidsI)
 
-    imagePath = bids_build_path(imageMetadata, BIDS_FILE_PATH_PATTERN) + '.nii'
-    image = bidsArchive4D.getImage(imagePath)
+    image = bidsArchive4D.getImages(filterEntities(imageMetadata),
+                                    matchExact=False)[0]
 
     shape = image.header.get_data_shape()
     assert len(shape) == 4 and shape[3] == (BIDSI_LENGTH * (1 + NUM_APPENDS))
@@ -586,7 +618,7 @@ def testStripNoParameterMatch(bidsArchive4D, imageMetadata, caplog):
             session=imageMetadata["session"],
             task=imageMetadata["task"],
             suffix=imageMetadata["suffix"],
-            dataType="func")
+            datatype="func")
 
         assert incremental is None
         assert "Failed to find matching image in BIDS Archive " \

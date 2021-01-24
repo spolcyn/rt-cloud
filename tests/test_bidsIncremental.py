@@ -177,12 +177,12 @@ def testMetadataOutput(validBidsI, imageMetadata):
     assert validBidsI.getMetadataField("InvalidEntityName") is None
 
     # Data type - always 'func' currently
-    assert validBidsI.dataType() == "func"
+    assert validBidsI.datatype == "func"
     # Entities
     for entity in ['subject', 'task']:
         assert validBidsI.getMetadataField(entity) == imageMetadata[entity]
     # Suffix
-    assert validBidsI.suffix() == imageMetadata["suffix"]
+    assert validBidsI.suffix == imageMetadata["suffix"]
 
 
 # Test setting BIDS-I metadata API works as expected
