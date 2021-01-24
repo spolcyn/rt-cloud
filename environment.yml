@@ -9,6 +9,7 @@ dependencies:
   - pydicom
   - toml
   - ipython
+  - inflect
   - jupyter
   - pytest
   - flake8

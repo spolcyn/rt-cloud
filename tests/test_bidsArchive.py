@@ -97,6 +97,15 @@ def incrementAcquisitionValues(incremental: BidsIncremental) -> None:
 """ ----- BEGIN TEST ARCHIVE QUERYING ----- """
 
 
+# Test using attributes forwarded to the BIDSLayout
+def testAttributeForward(bidsArchive4D):
+    assert bidsArchive4D.getSubject() == bidsArchive4D.getSubjects() == ['01']
+    assert bidsArchive4D.getRun() == bidsArchive4D.getRuns() == [1]
+    assert bidsArchive4D.getSession() == bidsArchive4D.getSessions() == ['01']
+    assert bidsArchive4D.getCeagent() == bidsArchive4D.getCeagents() == []
+    assert bidsArchive4D.getDirection() == bidsArchive4D.getDirections() == []
+
+
 # Test archive's string output is correct
 def testStringOutput(bidsArchive3D):
     logger.debug(str(bidsArchive3D))
@@ -403,12 +412,12 @@ def testSequenceAppend(bidsArchive4D, validBidsI, imageMetadata):
 # Test appending a new subject (and thus creating a new directory) to a
 # non-empty BIDS Archive
 def testAppendNewSubject(bidsArchive4D, validBidsI):
-    preSubjects = bidsArchive4D.subjects()
+    preSubjects = bidsArchive4D.getSubjects()
 
     validBidsI.setMetadataField("subject", "02")
     bidsArchive4D.appendIncremental(validBidsI)
 
-    assert len(bidsArchive4D.subjects()) == len(preSubjects) + 1
+    assert len(bidsArchive4D.getSubjects()) == len(preSubjects) + 1
 
     assert appendDataMatches(bidsArchive4D, validBidsI)
 

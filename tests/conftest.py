@@ -185,14 +185,14 @@ def archiveWithImage(image, metadata: dict, tmpdir):
     imagePath = Path(dataPath, filenamePrefix + '.nii')
     metadataPath = Path(dataPath, filenamePrefix + '.json')
 
-    nib.save(image, imagePath)
+    nib.save(image, str(imagePath))
     metadataPath.write_text(json.dumps(metadata))
 
     # Create an archive from the directory and return it
     return BidsArchive(rootPath)
 
 
-# BIDS Archive with a 3-D image
+# BIDS Archive with a single 3-D image
 @pytest.fixture(scope='function')
 def bidsArchive3D(tmpdir, sample3DNifti1, imageMetadata):
     adjustTimeUnits(imageMetadata)
@@ -212,10 +212,9 @@ def bidsArchiveMultipleRuns(tmpdir, sample4DNifti1, imageMetadata):
     adjustTimeUnits(imageMetadata)
     archive = archiveWithImage(sample4DNifti1, imageMetadata, tmpdir)
 
+    imageMetadata = imageMetadata.copy()
     imageMetadata['run'] = int(imageMetadata['run']) + 1
-    logger.debug("Run from dict: %s", imageMetadata['run'])
     incremental = BidsIncremental(sample4DNifti1, imageMetadata)
-    logger.debug("Run: %d", incremental.getDicomMetadataField('run'))
     archive.appendIncremental(incremental)
 
     return archive

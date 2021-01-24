@@ -71,14 +71,17 @@ def loadBidsEntities() -> dict:
     with open(filePath, mode='r', encoding="utf-8") as entities_file:
         loadedEntities = yaml.safe_load(entities_file)
 
-        entities = {}
-        for valueDict in loadedEntities.values():
-            name = valueDict["name"]
-            del valueDict["name"]
-            name = name.lower()
-            entities[name] = valueDict
+        logging.info("Loaded entities: %s", loadedEntities)
+        return loadedEntities
 
-        return entities
+
+def filterEntities(metadata: dict) -> dict:
+    """
+    Returns a new dictionary containing all the elements of the argument that
+    are valid BIDS entities.
+    """
+    entities = loadBidsEntities()
+    return {key: metadata[key] for key in metadata if key in entities}
 
 
 def getNiftiData(image) -> np.ndarray:

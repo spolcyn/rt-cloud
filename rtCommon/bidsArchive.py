@@ -89,6 +89,12 @@ class BidsArchive:
 
     # Enable accessing underlying BIDSLayout properties without inheritance
     def __getattr__(self, attr):
+        # Forward getEntity calls to the BIDSLayout in format get_entity
+        if attr.startswith('get'):
+            attr = 'get_' + attr.replace('get', '').lower()
+            return getattr(self.data, attr)
+
+        # Otherwise, no special processing needed
         return getattr(self.data, attr)
 
     """ Utility functions """
@@ -237,10 +243,6 @@ class BidsArchive:
     def _update(self):
         if self.data:
             self._updateLayout()
-
-    @failIfEmpty
-    def subjects(self) -> List:
-        return self.data.get_subjects()
 
     def isEmpty(self) -> bool:
         return (self.data is None)
