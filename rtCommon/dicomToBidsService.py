@@ -16,10 +16,7 @@ def dicomToBidsinc(dicomImg: pydicom.dataset.Dataset) -> BidsIncremental:
     # for BIDS in it by default. Thus, another component will handle the logic
     # and error handling surrounding this.
     niftiImage = convertDicomImgToNifti(dicomImg)
-    logger.debug("Nifti header after conversion is: %s", niftiImage.header)
     publicMeta, privateMeta = getMetadata(dicomImg)
 
     publicMeta.update(privateMeta)  # combine metadata dictionaries
-    requiredMetadata = {'sub': '002', 'task': 'story', 'suffix': 'bold'}
-    publicMeta.update(requiredMetadata)
-    return BidsIncremental(niftiImage, '002', 'story', 'bold', publicMeta)
+    return BidsIncremental(image=niftiImage, imageMetadata=publicMeta)
