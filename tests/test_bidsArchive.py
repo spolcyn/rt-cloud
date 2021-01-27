@@ -1,8 +1,12 @@
 import logging
+from operator import eq as opeq
 import os
 from pathlib import Path
 import re
 
+from bids.exceptions import (
+    NoMatchError,
+)
 from bids.layout.writing import build_path as bids_build_path
 import nibabel as nib
 import numpy as np
@@ -16,9 +20,10 @@ from rtCommon.bidsCommon import (
     filterEntities,
     getNiftiData,
     isNiftiPath,
+    symmetricDictDifference,
 )
 
-from rtCommon.errors import StateError, ValidationError
+from rtCommon.errors import MissingMetadataError, StateError, ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -464,10 +469,10 @@ def testStripImage(bidsArchive3D, bidsArchive4D, sample3DNifti1, sample4DNifti1,
     reference = BidsIncremental(sample3DNifti1, imageMetadata)
     incremental = bidsArchive3D.getIncremental(
         imageMetadata["subject"],
-        imageMetadata["session"],
         imageMetadata["task"],
         imageMetadata["suffix"],
-        "func")
+        "func",
+        session=imageMetadata["session"])
 
     # 3D image still results in 4D incremental
     assert len(incremental.imageDimensions) == 4
@@ -481,11 +486,11 @@ def testStripImage(bidsArchive3D, bidsArchive4D, sample3DNifti1, sample4DNifti1,
     for index in range(0, 2):
         incremental = bidsArchive4D.getIncremental(
                         imageMetadata["subject"],
-                        imageMetadata["session"],
                         imageMetadata["task"],
                         imageMetadata["suffix"],
                         "func",
-                        sliceIndex=index)
+                        sliceIndex=index,
+                        session=imageMetadata["session"])
 
         assert len(incremental.imageDimensions) == 4
         assert incremental.imageDimensions[3] == 1
@@ -497,14 +502,15 @@ def testStripImage(bidsArchive3D, bidsArchive4D, sample3DNifti1, sample4DNifti1,
 # present in the archive
 def testStripNoMatchingImage(bidsArchive4D, imageMetadata):
     imageMetadata['subject'] = 'notPresent'
-    incremental = bidsArchive4D.getIncremental(
-        imageMetadata["subject"],
-        imageMetadata["session"],
-        imageMetadata["task"],
-        imageMetadata["suffix"],
-        "func")
+    with pytest.raises(NoMatchError):
+        incremental = bidsArchive4D.getIncremental(
+            imageMetadata["subject"],
+            imageMetadata["task"],
+            imageMetadata["suffix"],
+            "func",
+            session=imageMetadata["session"])
 
-    assert incremental is None
+        assert incremental is None
 
 
 # Test stripping image from BIDS archive raises warning when no matching
@@ -525,19 +531,15 @@ def testStripNoMatchingMetdata(bidsArchive4D, imageMetadata, caplog, tmpdir):
     os.remove(absPath)
     bidsArchive4D._update()
 
-    # Configure logging to capture the warning
-    caplog.set_level(logging.WARNING, logger="rtCommon.bidsArchive")
-
     # Without the sidecar metadata, not enough information for an incremental
-    with pytest.raises(ValidationError):
+    with pytest.raises(MissingMetadataError):
         bidsArchive4D.getIncremental(imageMetadata["subject"],
-                                     imageMetadata["session"],
                                      imageMetadata["task"],
                                      imageMetadata["suffix"],
-                                     "func")
+                                     "func",
+                                     session=imageMetadata["session"])
 
-    # Check the logging for the warning message
-    assert "Archive didn't contain any matching metadata" in caplog.text
+        # TODO(spolcyn): Add code to test the exception's text
 
 
 # Test strip with an out-of-bounds slice index for the matching image (could be
@@ -548,11 +550,11 @@ def testStripSliceIndexOutOfBounds(bidsArchive3D, bidsArchive4D, imageMetadata,
     outOfBoundsIndex = -1
     incremental = bidsArchive3D.getIncremental(
         imageMetadata["subject"],
-        imageMetadata["session"],
         imageMetadata["task"],
         imageMetadata["suffix"],
         "func",
-        sliceIndex=-1)
+        sliceIndex=-1,
+        session=imageMetadata["session"])
 
     assert f"Slice index must be >= 0 (got {outOfBoundsIndex})" in caplog.text
     assert incremental is None
@@ -561,11 +563,11 @@ def testStripSliceIndexOutOfBounds(bidsArchive3D, bidsArchive4D, imageMetadata,
     outOfBoundsIndex = 1
     incremental = bidsArchive3D.getIncremental(
         imageMetadata["subject"],
-        imageMetadata["session"],
         imageMetadata["task"],
         imageMetadata["suffix"],
         "func",
-        sliceIndex=outOfBoundsIndex)
+        sliceIndex=outOfBoundsIndex,
+        session=imageMetadata["session"])
 
     assert f"Matching image was a 3-D NIfTI; time index {outOfBoundsIndex} " \
            f"too high for a 3-D NIfTI (must be 0)" in caplog.text
@@ -576,11 +578,11 @@ def testStripSliceIndexOutOfBounds(bidsArchive3D, bidsArchive4D, imageMetadata,
     archiveLength = 2
     incremental = bidsArchive4D.getIncremental(
         imageMetadata["subject"],
-        imageMetadata["session"],
         imageMetadata["task"],
         imageMetadata["suffix"],
         "func",
-        sliceIndex=outOfBoundsIndex)
+        sliceIndex=outOfBoundsIndex,
+        session=imageMetadata["session"])
 
     assert f"Image index {outOfBoundsIndex} too large for NIfTI volume of " \
            f"length {archiveLength}" in caplog.text
@@ -590,18 +592,18 @@ def testStripSliceIndexOutOfBounds(bidsArchive3D, bidsArchive4D, imageMetadata,
 # Test stripping when files are found, but none match provided parameters
 # exactly
 def testStripNoParameterMatch(bidsArchive4D, imageMetadata, caplog):
-    # Test non-existent otherLabels
-    incremental = bidsArchive4D.getIncremental(
-        imageMetadata["subject"],
-        imageMetadata["session"],
-        imageMetadata["task"],
-        imageMetadata["suffix"],
-        "func",
-        otherLabels={'run': 2})
+    # Test entity values that don't exist in the archive
+    with pytest.raises(NoMatchError):
+        incremental = bidsArchive4D.getIncremental(
+            imageMetadata["subject"],
+            imageMetadata["task"],
+            imageMetadata["suffix"],
+            "func",
+            session=imageMetadata['session'],
+            run=2)
 
-    assert incremental is None
-    assert "Failed to find matching image in BIDS Archive " \
-        "for provided metadata" in caplog.text
+        # TODO(spolcyn): Check the text of the exception
+        assert incremental is None
 
     # Test non-existent task, subject, session, and suffix in turn
     modificationPairs = {'subject': 'nonExistentSubject',
@@ -613,15 +615,15 @@ def testStripNoParameterMatch(bidsArchive4D, imageMetadata, caplog):
         oldValue = imageMetadata[argName]
         imageMetadata[argName] = argValue
 
-        incremental = bidsArchive4D.getIncremental(
-            subject=imageMetadata["subject"],
-            session=imageMetadata["session"],
-            task=imageMetadata["task"],
-            suffix=imageMetadata["suffix"],
-            datatype="func")
+        with pytest.raises(NoMatchError):
+            incremental = bidsArchive4D.getIncremental(
+                subject=imageMetadata["subject"],
+                task=imageMetadata["task"],
+                suffix=imageMetadata["suffix"],
+                datatype="func",
+                session=imageMetadata['session'])
 
-        assert incremental is None
-        assert "Failed to find matching image in BIDS Archive " \
-            "for provided metadata" in caplog.text
+            # TODO(spolcyn): Check the text of the exception
+            assert incremental is None
 
         imageMetadata[argName] = oldValue

@@ -9,30 +9,28 @@ import functools
 import json
 import logging
 import os
+import re
 from typing import List
 
-from bids import BIDSLayout
-from bids.layout import (
-    parse_file_entities as bids_parse_file_entities,
-    BIDSImageFile
+from bids.config import set_option as bc_set_option
+from bids.exceptions import (
+    NoMatchError,
 )
-from bids.layout.writing import build_path as bids_build_path
-import bids.config as bc
+from bids.layout import (
+    BIDSImageFile,
+    BIDSLayout,
+)
 import nibabel as nib
 import numpy as np
 
 from rtCommon.bidsCommon import (
-    BIDS_DIR_PATH_PATTERN,
     getNiftiData,
-    isJsonPath,
-    isNiftiPath,
 )
 from rtCommon.bidsIncremental import BidsIncremental
-from rtCommon.errors import StateError, ValidationError
-from rtCommon.imageHandling import readNifti
+from rtCommon.errors import MissingMetadataError, StateError, ValidationError
 
 # Silence future warning
-bc.set_option('extension_initial_dot', True)
+bc_set_option('extension_initial_dot', True)
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +69,7 @@ class BidsArchive:
             Root: /tmp/downloads/dataset | Subjects: 20 |
             Sessions: 3 | Runs: 2
         """
-        self.rootPath = rootPath
+        self.rootPath = os.path.abspath(rootPath)
         # Formatting initialization logic this way enables the creation of an
         # empty BIDS archive that an incremntal can then be appended to
         # TODO(spolcyn): Decide whether this additional capability is worth the
@@ -94,10 +92,17 @@ class BidsArchive:
 
     # Enable accessing underlying BIDSLayout properties without inheritance
     def __getattr__(self, attr):
-        # Forward getEntity calls to the BIDSLayout in format get_entity
-        if attr.startswith('get'):
+        # Forward getXyz calls to the BIDSLayout in format get_xyz
+        pattern = re.compile("get[A-Z][a-z]+")
+        if pattern.match(attr) is not None:
+            attr = attr.lower()
+            attr = attr[0:3] + '_' + attr[3:]
+
+        """
+        if attr.startswith('get') and len(attr) > 3:
             attr = 'get_' + attr.replace('get', '').lower()
             return getattr(self.data, attr)
+        """
 
         # Otherwise, no special processing needed
         return getattr(self.data, attr)
@@ -559,18 +564,16 @@ class BidsArchive:
                              "specified, can't append")
 
     @failIfEmpty
-    def getIncremental(self, subject: str, session: str, task: str, suffix: str,
+    def getIncremental(self, subject: str, task: str, suffix: str,
                        datatype: str, sliceIndex: int = 0,
-                       otherLabels: dict = None):
+                       **entities) -> BidsIncremental:
         """
         Creates a BIDS-Incremental file from the specified part of the BIDS
         Archive.
 
         Args:
-            archive: The archive to pull data from
             subject: Subject ID to pull data for (for "sub-control01", ID is
                 "control01")
-            session: Session ID to pull data for (for "ses-2020", ID is "2020")
             task: Task to pull data for (for "task-nback", name is "nback")
             suffix: BIDS suffix for file, which is image contrast for fMRI
                 (bold, cbv, or phase)
@@ -586,85 +589,57 @@ class BidsArchive:
                 its associated metadata
 
         Examples:
-            bidsToBidsInc(archive, "01", "2020", "func", "task-nback_bold", 0)
-            will extract the first image of the volume at:
-            "sub-01/ses-2020/func/sub-01_task-nback_bold.nii"
-
         """
         if sliceIndex < 0:
             logger.error(f"Slice index must be >= 0 (got {sliceIndex})")
             return None
 
-        metadata = {'subject': subject, 'session': session, 'task': task,
-                    'suffix': suffix, 'datatype': datatype}
-        archivePath = bids_build_path(metadata, BIDS_DIR_PATH_PATTERN)
+        # Fold required arguments into entities dictionary
+        entities.update({'subject': subject, 'task': task,
+                         'suffix': suffix, 'datatype': datatype})
 
-        matchingFilePaths = self.getFilesForPath(archivePath)
-        niftiPaths = [path for path in matchingFilePaths if isNiftiPath(path)]
-        metaPaths = [path for path in matchingFilePaths if isJsonPath(path)]
+        candidates = self.data.get(**entities)
+        candidates = [c for c in candidates if type(c) is BIDSImageFile]
 
-        # Fail if no images
-        if not niftiPaths:
-            logger.error("Archive didn't contain any matching images")
-            return None
+        # Throw error if not exactly one match
+        if len(candidates) == 0:
+            raise NoMatchError("Unable to find any data in archive that matches"
+                               f" all provided entities (got: {entities})")
+        elif len(candidates) > 1:
+            # TODO(spolcyn): Make more specific exception type
+            raise Exception("Too many candidates for entities " + str(entities)
+                            + '(got: ' + str(candidates))
 
-        # Warn if no metadata
-        if not metaPaths:
-            logger.warning("Archive didn't contain any matching metadata")
+        # Create BIDS-I
+        candidate = candidates[0]
+        image = candidate.get_image()
 
-        image = None
-
-        def pathEntitiesMatch(path) -> bool:
-            """
-            Return true if the BIDS entities contained in the file at the given
-            path match the entities provided to the BIDS -> BIDS-I conversion
-            method.
-            """
-            entities = bids_parse_file_entities(path)
-
-            if entities.get("task") != task or \
-               entities.get("subject") != subject or \
-               entities.get("session") != session:
-                return False
-
-            if otherLabels:
-                for label, value in otherLabels.items():
-                    if entities.get(label) != value:
-                        return False
-
-            if suffix and entities.get("suffix") != suffix:
-                return False
-
-            return True
-
-        for path in niftiPaths:
-            if pathEntitiesMatch(path):
-                image = readNifti(path)
-                break
-
-        for path in metaPaths:
-            if pathEntitiesMatch(path):
-                with open(path, 'r', encoding='utf-8') as metadataFile:
-                    metadata.update(json.load(metadataFile))
-                break
-
-        if image is None:
-            logger.error("Failed to find matching image in BIDS Archive for "
-                         "provided metadata")
-            return None
-        elif len(image.dataobj.shape) == 3:
+        # Process error conditions and slice image if necessary
+        if len(image.dataobj.shape) == 3:
             if sliceIndex != 0:
+                # TODO(spolcyn): Change to exception
                 logger.error("Matching image was a 3-D NIfTI; time index %d "
                              "too high for a 3-D NIfTI (must be 0)", sliceIndex)
                 return None
-            return BidsIncremental(image, metadata)
-        else:
+        elif len(image.dataobj.shape) == 4:
             slices = nib.four_to_three(image)
 
             if sliceIndex < len(slices):
-                newImage = slices[sliceIndex]
-                return BidsIncremental(newImage, metadata)
+                image = slices[sliceIndex]
             else:
+                # TODO(spolcyn): Change to exception
                 logger.error(f"Image index {sliceIndex} too large for NIfTI "
                              f"volume of length {len(slices)}")
                 return None
+        else:
+            raise ValueError("Expected image to have 3 or 4 dimensions (got "
+                             + len(image.dataobj.shape) + " dimensions)")
+
+        metadata = self.data.get_metadata(candidate.path, include_entities=True)
+        metadata.pop('extension')  # unused by BIDS-I
+
+        try:
+            return BidsIncremental(image, metadata)
+        except MissingMetadataError as e:
+            raise MissingMetadataError("Archive lacks required metadata for "
+                                       "BIDS Incremenetal creation." + str(e))

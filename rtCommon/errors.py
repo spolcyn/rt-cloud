@@ -48,3 +48,7 @@ class MissedMultipleDeadlines(RTError):
 class NotImplementedError(RTError):
     """Functionality is not implemented yet"""
     pass
+
+class MissingMetadataError(RTError):
+    """Required BIDS metadata missing"""
+    pass
