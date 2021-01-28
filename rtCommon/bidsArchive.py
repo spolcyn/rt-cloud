@@ -17,6 +17,7 @@ from bids.exceptions import (
     NoMatchError,
 )
 from bids.layout import (
+    BIDSFile,
     BIDSImageFile,
     BIDSLayout,
 )
@@ -111,28 +112,38 @@ class BidsArchive:
 
     """ Utility functions """
     @staticmethod
-    def _stripRoot(relPath: str) -> str:
+    def _stripLeadingSlash(path: str) -> str:
         """
-        Strips a leading / from the path, preventing paths defined relative to
-        dataset root (/sub-01/ses-01) from being interpreted as being relative
-        to the root of the filesystem
+        Strips a leading / from the path, if it exists. This prevents paths
+        defined relative to dataset root (/sub-01/ses-01) from being interpreted
+        as being relative to the root of the filesystem.
+
+        Args:
+            path: Path to strip leading slash from.
+
+        Examples:
+            >>> path = '/sub-01/ses-01/func/sub-01_task-test_bold.nii.gz'
+            >>> BidsArchive._stripLeadingSlash(path)
+            'sub-01/ses-01/func/sub-01_task-test_bold.nii.gz'
+            >>> path = 'sub-01/ses-01/func/sub-01_task-test_bold.nii.gz'
+            'sub-01/ses-01/func/sub-01_task-test_bold.nii.gz'
         """
-        if len(relPath) >= 1 and relPath[0] == "/":
-            return relPath[1:]
+        if len(path) >= 1 and path[0] == "/":
+            return path[1:]
         else:
-            return relPath
+            return path
 
     def absPathFromRelPath(self, relPath: str) -> str:
         """
         Makes an absolute path from the relative path within the dataset.
         """
-        return os.path.join(self.rootPath, self._stripRoot(relPath))
+        return os.path.join(self.rootPath, self._stripLeadingSlash(relPath))
 
     def fileExistsInArchive(self, path: str) -> bool:
         if self.data is None:
             return False
         else:
-            path = self._stripRoot(path)
+            path = self._stripLeadingSlash(path)
             fileExists = self.data.get_file(path) is not None
             logger.debug("File %s exists: %s", path, fileExists)
             return fileExists
@@ -164,7 +175,7 @@ class BidsArchive:
             is requested).
 
         Examples:
-            >>> archive = BidsArchive('.')
+            >>> archive = BidsArchive('/path/to/archive')
 
             Using a dictionary to provide target entities.
 
@@ -282,10 +293,32 @@ class BidsArchive:
     def isEmpty(self) -> bool:
         return (self.data is None)
 
-    def tryGetFile(self, path: str) -> str:
+    def tryGetFile(self, path: str) -> BIDSFile:
         """
         Tries to get a file from the archive using different interpretations of
-        the target path
+        the target path. Interpretations considered are:
+        1) Path with leading slash, relative to filesystem root
+        2) Path with leading slash, relative to archive root
+        3) Path with no leading slash
+
+        Args:
+            path: Path to the file to attempt to get.
+
+        Returns:
+            BIDSFile (or subclass) if a matching file was found, None otherwise.
+
+        Examples:
+            >>> archive = BidsArchive('/path/to/archive')
+            >>> filename = 'sub-01_task-test_bold.nii.gz'
+            >>> archive.tryGetFile('/tmp/archive/sub-01/func/' + filename)
+            <BIDSImageFile filename=/tmp/archive/sub-01/func/sub-01_task-test\
+            _bold.nii.gz
+            >>> archive.tryGetFile('/' + filename)
+            <BIDSImageFile filename=/tmp/archive/sub-01/func/sub-01_task-test\
+            _bold.nii.gz
+            >>> archive.tryGetFile(filename)
+            <BIDSImageFile filename=/tmp/archive/sub-01/func/sub-01_task-test\
+            _bold.nii.gz
         """
         # Tries absolute to disk root and relative to archive root
         archiveFile = self.get_file(path)
@@ -293,7 +326,7 @@ class BidsArchive:
             return archiveFile
 
         # Try absolute to archive root
-        strippedRootPath = self._stripRoot(path)
+        strippedRootPath = self._stripLeadingSlash(path)
         archiveFile = self.get_file(strippedRootPath)
         if archiveFile is not None:
             return archiveFile
@@ -303,26 +336,32 @@ class BidsArchive:
     @failIfEmpty
     def getMetadata(self, path: str, includeEntities: bool = True) -> dict:
         """
-        Gets metadata for the provided file in the dataset. For an image file,
-        this will include the entities embedded in the pathname (e.g, 'subject')
-        as well as the metdata found in any sidecar metadata files.
+        Get metadata for the file at the provided path in the dataset. Sidecar
+        metadata is always returned, and BIDS entities present in the filename
+        are returned by default (this can be disabled).
 
         Args:
             path: Path to image file to get metadata for
             includeEntities: True to include the entities in the filename (e.g.,
                 'subject', 'task', and 'session'), False to include only the
-                metadata in sidecar files.
+                metadata in sidecar files. Defaults to True.
 
         Returns:
             Dictionary with sidecar metadata for the file and any metadata that
                 can be extracted from the filename (e.g., subject, session).
 
+        Examples:
+            >>> archive = BidsArchive('/path/to/archive')
+            >>> path = archive.getImages()[0].path
+            >>> archive.getMetadata(path)
+            {'AcquisitionMatrixPE': 320, 'AcquisitionNumber': 1, ... }
         """
         target = self.tryGetFile(path)
         if target is None:
             raise NoMatchError("File doesn't exist, can't get metadata")
         else:
-            return self.data.get_metadata(target.path, include_entities=True)
+            return self.data.get_metadata(target.path,
+                                          include_entities=includeEntities)
 
     @staticmethod
     def _imagesAppendCompatible(img1: nib.Nifti1Image, img2: nib.Nifti1Image):
