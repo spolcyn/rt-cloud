@@ -148,8 +148,8 @@ class BidsArchive:
         return self.fileExists(path) or self.dirExists(path)
 
     @failIfEmpty
-    def getImages(self, entities: dict = {},
-                  matchExact: bool = False) -> List[nib.Nifti1Image]:
+    def getImages(self, matchExact: bool = False,
+                  **entities) -> List[BIDSImageFile]:
         """
         Return all images that have the provided entities. If no entities are
         provided, then all images are returned.
@@ -169,8 +169,13 @@ class BidsArchive:
             >>> archive = BidsArchive('.')
             >>> entityDict = {'subject': '01', 'datatype': 'func'}
             >>> images = archive.getImages(entityDict)
-            >>> print(images[0].shape)
+            >>> image = images[0]
+            >>> print(image.get_image()
             (64, 64, 27, 3)
+            >>> print(image.path)
+            /tmp/archive/func/sub-01_task-test_bold.nii
+            >>> print(image.filename)
+            sub-01_task-test_bold.nii
 
             An exact match must have exactly the same entities; since images
             must also have the task entity in their filename, the above
@@ -202,12 +207,12 @@ class BidsArchive:
                 result_entities.pop('extension', None)
 
                 if result_entities == entities:
-                    return [result.get_image()]
+                    return [result]
 
             logger.error(f"No images were an exact match for: {entities}")
             return []
         else:
-            return [r.get_image() for r in results]
+            return results
 
     def _ensurePathExists(self, relPath: str):
         """
@@ -518,8 +523,8 @@ class BidsArchive:
             entityDict['suffix'] = incremental.suffix
 
             # The one exact match must exist because the path exists
-            archiveImg = self.getImages(entityDict,
-                                        matchExact=True)[0]
+            archiveImg = self.getImages(**entityDict,
+                                        matchExact=True)[0].get_image()
 
             # Validate header match
             if not self._imagesAppendCompatible(incremental.image,

@@ -34,9 +34,9 @@ logger = logging.getLogger(__name__)
 def appendDataMatches(archive: BidsArchive, reference: BidsIncremental,
                       startIndex: int = 0, endIndex: int = -1):
     entities = filterEntities(reference.imgMetadata)
-    images = archive.getImages(entities)
+    images = archive.getImages(**entities)
     assert len(images) == 1
-    imageFromArchive = images[0]
+    imageFromArchive = images[0].get_image()
 
     fullImageData = getNiftiData(imageFromArchive)
     if endIndex == -1:
@@ -143,10 +143,10 @@ def testGetImages(bidsArchive3D, sample3DNifti1, bidsArchiveMultipleRuns,
     entities = ['subject', 'task', 'session']
     dataDict = {key: imageMetadata[key] for key in entities}
 
-    archiveImages = bidsArchive3D.getImages(dataDict, matchExact=False)
+    archiveImages = bidsArchive3D.getImages(**dataDict, matchExact=False)
     assert len(archiveImages) == 1
 
-    archiveImage = archiveImages[0]
+    archiveImage = archiveImages[0].get_image()
     assert archiveImage.header == sample3DNifti1.header
     assert np.array_equal(getNiftiData(archiveImage),
                           getNiftiData(sample3DNifti1))
@@ -156,16 +156,17 @@ def testGetImages(bidsArchive3D, sample3DNifti1, bidsArchiveMultipleRuns,
     # an exact match will fail for the multiple runs archive, which has files
     # with the 'run' entity, but will succeed for a non-exact matching, as the
     # provided entities match a subset of the file entities
-    archiveImages = bidsArchiveMultipleRuns.getImages(dataDict, matchExact=True)
+    archiveImages = bidsArchiveMultipleRuns.getImages(**dataDict,
+                                                      matchExact=True)
     assert archiveImages == []
 
     matchingDict = dataDict.copy()
     matchingDict.update({'datatype': 'func', 'suffix': 'bold', 'run': 1})
-    archiveImages = bidsArchiveMultipleRuns.getImages(matchingDict,
+    archiveImages = bidsArchiveMultipleRuns.getImages(**matchingDict,
                                                       matchExact=True)
     assert archiveImages != []
 
-    archiveImages = bidsArchiveMultipleRuns.getImages(dataDict,
+    archiveImages = bidsArchiveMultipleRuns.getImages(**dataDict,
                                                       matchExact=False)
     assert archiveImages != []
     assert len(archiveImages) == 2
@@ -174,12 +175,12 @@ def testGetImages(bidsArchive3D, sample3DNifti1, bidsArchiveMultipleRuns,
 # Test failing to find an image in an archive
 def testFailFindImage(bidsArchive3D, sample3DNifti1, imageMetadata, caplog):
     dataDict = {'subject': 'nonValidSubject'}
-    assert bidsArchive3D.getImages(dataDict) == []
+    assert bidsArchive3D.getImages(**dataDict) == []
     assert f'No images have all provided entities: {dataDict}' in caplog.text
 
     dataDict['subject'] = imageMetadata['subject']
     dataDict['task'] = 'invalidTask'
-    assert bidsArchive3D.getImages(dataDict) == []
+    assert bidsArchive3D.getImages(**dataDict) == []
     assert f'No images have all provided entities: {dataDict}' in caplog.text
 
 
@@ -200,13 +201,14 @@ def testFailEmpty(tmpdir):
                                     task="will fall anyway",
                                     suffix="will fall anyway",
                                     datatype="will fall anyway")
+
+
 # Test getting metadata from the archive
 def testGetMetadata(bidsArchive3D, imageMetadata):
     # all entities in imageMetadata should be returned
     EXTENSION = '.nii'
-    returnedMeta = bidsArchive3D.getMetadata(bids_build_path(imageMetadata,
-                                                             BIDS_FILE_PATH_PATTERN)
-                                             + EXTENSION)
+    returnedMeta = bidsArchive3D.getMetadata(
+        bids_build_path(imageMetadata, BIDS_FILE_PATH_PATTERN) + EXTENSION)
     imageMetadata['extension'] = EXTENSION
     imageMetadata['datatype'] = 'func'
 
@@ -447,8 +449,8 @@ def testSequenceAppend(bidsArchive4D, validBidsI, imageMetadata):
         incrementAcquisitionValues(validBidsI)
         bidsArchive4D.appendIncremental(validBidsI)
 
-    image = bidsArchive4D.getImages(filterEntities(imageMetadata),
-                                    matchExact=False)[0]
+    image = bidsArchive4D.getImages(
+        matchExact=False, **filterEntities(imageMetadata))[0].get_image()
 
     shape = image.header.get_data_shape()
     assert len(shape) == 4 and shape[3] == (BIDSI_LENGTH * (1 + NUM_APPENDS))
