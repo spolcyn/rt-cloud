@@ -126,17 +126,14 @@ class BidsArchive:
         """
         return os.path.join(self.rootPath, self._stripRoot(relPath))
 
-    def fileExists(self, relPath: str) -> bool:
-        # TODO(spolcyn): Clarify what this method does, and why it's needed.
-        # How does it differ from os.path.exists?
+    def fileExistsInArchive(self, path: str) -> bool:
         if self.data is None:
             return False
-
-        # search for matching BIDS file in the dataset
-        relPath = self._stripRoot(relPath)
-        result = self.data.get_file(self._stripRoot(relPath))
-
-        return result is not None
+        else:
+            path = self._stripRoot(path)
+            fileExists = self.data.get_file(path) is not None
+            logger.debug("File %s exists: %s", path, fileExists)
+            return fileExists
 
     def dirExists(self, relPath: str) -> bool:
         if self.data is None:
@@ -145,7 +142,7 @@ class BidsArchive:
         return os.path.isdir(self.absPathFromRelPath(relPath))
 
     def pathExists(self, path: str) -> bool:
-        return self.fileExists(path) or self.dirExists(path)
+        return self.fileExistsInArchive(path) or self.dirExists(path)
 
     @failIfEmpty
     def getImages(self, matchExact: bool = False,
@@ -301,7 +298,7 @@ class BidsArchive:
     @failIfEmpty
     def getMetadata(self, path: str) -> dict:
         """
-        Gets metadata for the file at path in the dataset. For an image file,
+        Gets metadata for the provided file in the dataset. For an image file,
         this will include the entities embedded in the pathname (e.g, 'subject')
         as well as the metdata found in any sidecar metadata files.
 
@@ -313,14 +310,11 @@ class BidsArchive:
                 can be extracted from the filename (e.g., subject, session)
 
         """
-        if not self.fileExists(path):
-            if self.fileExists(os.path.relpath(path, start=self.rootPath)):
-                path = os.path.relpath(path, start=self.rootPath)
-            else:
-                raise NoMatchError("File doesn't exist, can't get metadata")
-
-        absPath = self.absPathFromRelPath(path)
-        return self.data.get_metadata(absPath, include_entities=True)
+        target = self.get_file(self._stripRoot(path))
+        if target is None:
+            raise NoMatchError("File doesn't exist, can't get metadata")
+        else:
+            return self.data.get_metadata(target.path, include_entities=True)
 
     @staticmethod
     def _imagesAppendCompatible(img1: nib.Nifti1Image, img2: nib.Nifti1Image):
