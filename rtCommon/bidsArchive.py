@@ -643,4 +643,4 @@ class BidsArchive:
             return BidsIncremental(image, metadata)
         except MissingMetadataError as e:
             raise MissingMetadataError("Archive lacks required metadata for "
-                                       "BIDS Incremenetal creation." + str(e))
+                                       "BIDS Incremental creation: " + str(e))

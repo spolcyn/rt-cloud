@@ -529,7 +529,7 @@ def testStripNoMatchingImage(bidsArchive4D, imageMetadata):
 
 # Test stripping image from BIDS archive raises warning when no matching
 # metadata is present in the archive
-def testStripNoMatchingMetdata(bidsArchive4D, imageMetadata, caplog, tmpdir):
+def testStripNoMatchingMetadata(bidsArchive4D, imageMetadata, caplog, tmpdir):
     # Create path to sidecar metadata file
     relPath = bids_build_path(imageMetadata, BIDS_FILE_PATH_PATTERN) + \
         BidsFileExtension.METADATA.value
@@ -546,14 +546,14 @@ def testStripNoMatchingMetdata(bidsArchive4D, imageMetadata, caplog, tmpdir):
     bidsArchive4D._update()
 
     # Without the sidecar metadata, not enough information for an incremental
-    with pytest.raises(MissingMetadataError):
+    errorText = r"Archive lacks required metadata for BIDS Incremental " \
+                r"creation: .*"
+    with pytest.raises(MissingMetadataError, match=errorText):
         bidsArchive4D.getIncremental(imageMetadata["subject"],
                                      imageMetadata["task"],
                                      imageMetadata["suffix"],
                                      "func",
                                      session=imageMetadata["session"])
-
-        # TODO(spolcyn): Add code to test the exception's text
 
 
 # Test strip with an out-of-bounds slice index for the matching image (could be
@@ -607,7 +607,9 @@ def testStripSliceIndexOutOfBounds(bidsArchive3D, bidsArchive4D, imageMetadata,
 # exactly
 def testStripNoParameterMatch(bidsArchive4D, imageMetadata, caplog):
     # Test entity values that don't exist in the archive
-    with pytest.raises(NoMatchError):
+    errorText = r"Unable to find any data in archive that matches" \
+                r" all provided entities \(got: \{.*?\}\)"
+    with pytest.raises(NoMatchError, match=errorText):
         incremental = bidsArchive4D.getIncremental(
             imageMetadata["subject"],
             imageMetadata["task"],
@@ -616,7 +618,6 @@ def testStripNoParameterMatch(bidsArchive4D, imageMetadata, caplog):
             session=imageMetadata['session'],
             run=2)
 
-        # TODO(spolcyn): Check the text of the exception
         assert incremental is None
 
     # Test non-existent task, subject, session, and suffix in turn
@@ -629,7 +630,7 @@ def testStripNoParameterMatch(bidsArchive4D, imageMetadata, caplog):
         oldValue = imageMetadata[argName]
         imageMetadata[argName] = argValue
 
-        with pytest.raises(NoMatchError):
+        with pytest.raises(NoMatchError, match=errorText):
             incremental = bidsArchive4D.getIncremental(
                 subject=imageMetadata["subject"],
                 task=imageMetadata["task"],
@@ -637,7 +638,6 @@ def testStripNoParameterMatch(bidsArchive4D, imageMetadata, caplog):
                 datatype="func",
                 session=imageMetadata['session'])
 
-            # TODO(spolcyn): Check the text of the exception
             assert incremental is None
 
         imageMetadata[argName] = oldValue
