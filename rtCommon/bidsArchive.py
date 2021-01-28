@@ -92,20 +92,22 @@ class BidsArchive:
 
     # Enable accessing underlying BIDSLayout properties without inheritance
     def __getattr__(self, attr):
-        # Forward getXyz calls to the BIDSLayout in format get_xyz
+        originalAttr = attr
+
+        # If the attr is in the format getXyz, convert to get_xyz for forwarding
+        # to the BIDSLayout object
         pattern = re.compile("get[A-Z][a-z]+")
         if pattern.match(attr) is not None:
             attr = attr.lower()
             attr = attr[0:3] + '_' + attr[3:]
 
-        """
-        if attr.startswith('get') and len(attr) > 3:
-            attr = 'get_' + attr.replace('get', '').lower()
-            return getattr(self.data, attr)
-        """
+        if not self.isEmpty():
+            try:
+                return getattr(self.data, attr)
+            except AttributeError:
+                raise AttributeError("{} object has no attribute {}".format(
+                    self.__class__.__name__, originalAttr))
 
-        # Otherwise, no special processing needed
-        return getattr(self.data, attr)
 
     """ Utility functions """
     @staticmethod
@@ -152,10 +154,9 @@ class BidsArchive:
         provided, then all images are returned.
 
         Args:
-            entities: Dictionary of BIDS entity-value mappings to filter the
-                images in the archive on.
             matchExact: Only return images that have exactly the provided
                 entities, no more and no less.
+            **entities: Entities that returned images must have.
 
         Returns:
             A list of images matching the provided entities (empty if there are
@@ -164,8 +165,18 @@ class BidsArchive:
 
         Examples:
             >>> archive = BidsArchive('.')
+
+            Using a dictionary to provide target entities.
+
             >>> entityDict = {'subject': '01', 'datatype': 'func'}
-            >>> images = archive.getImages(entityDict)
+            >>> images = archive.getImages(**entityDict)
+
+            Using keyword arguments to provide target entities.
+
+            >>> images = archive.getImages(subject='01', datatype='func')
+
+            Accessing properties of the image.
+
             >>> image = images[0]
             >>> print(image.get_image()
             (64, 64, 27, 3)
@@ -271,46 +282,43 @@ class BidsArchive:
     def isEmpty(self) -> bool:
         return (self.data is None)
 
-    @failIfEmpty
-    def getFilesForPath(self, path: str) -> List:
+    def tryGetFile(self, path: str) -> str:
         """
-        Finds all files within the dataset at the provided path. Path should be
-        relative to dataset root.
-
-        Args:
-            path: Path relative to dataset root to search for files in.
-
-        Returns:
-            List of absoulte paths on disk to the files found at the target.
-
+        Tries to get a file from the archive using different interpretations of
+        the target path
         """
-        # Get all files
-        files = self.data.get_files()
-        matchingFiles = []
-        absPath = self.absPathFromRelPath(path)
+        # Tries absolute to disk root and relative to archive root
+        archiveFile = self.get_file(path)
+        if archiveFile is not None:
+            return archiveFile
 
-        for _, bidsFile in files.items():
-            if bidsFile.path.startswith(absPath):
-                matchingFiles.append(bidsFile.path)
+        # Try absolute to archive root
+        strippedRootPath = self._stripRoot(path)
+        archiveFile = self.get_file(strippedRootPath)
+        if archiveFile is not None:
+            return archiveFile
 
-        return matchingFiles
+        return None
 
     @failIfEmpty
-    def getMetadata(self, path: str) -> dict:
+    def getMetadata(self, path: str, includeEntities: bool = True) -> dict:
         """
         Gets metadata for the provided file in the dataset. For an image file,
         this will include the entities embedded in the pathname (e.g, 'subject')
         as well as the metdata found in any sidecar metadata files.
 
         Args:
-            path: Relative path to the file to obtain metdata for.
+            path: Path to image file to get metadata for
+            includeEntities: True to include the entities in the filename (e.g.,
+                'subject', 'task', and 'session'), False to include only the
+                metadata in sidecar files.
 
         Returns:
             Dictionary with sidecar metadata for the file and any metadata that
-                can be extracted from the filename (e.g., subject, session)
+                can be extracted from the filename (e.g., subject, session).
 
         """
-        target = self.get_file(self._stripRoot(path))
+        target = self.tryGetFile(path)
         if target is None:
             raise NoMatchError("File doesn't exist, can't get metadata")
         else:

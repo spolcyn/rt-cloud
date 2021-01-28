@@ -191,7 +191,6 @@ def testFailEmpty(tmpdir):
 
     with pytest.raises(StateError):
         emptyArchive.pathExists("will fail anyway")
-        emptyArchive.getFilesForPath("will fail anyway")
         emptyArchive.getImages("will fail anyway")
         emptyArchive.addImage(None, "will fall anyway")
         emptyArchive.getMetadata("will fall anyway")
