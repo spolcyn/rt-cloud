@@ -200,6 +200,18 @@ def testFailEmpty(tmpdir):
                                     task="will fall anyway",
                                     suffix="will fall anyway",
                                     datatype="will fall anyway")
+# Test getting metadata from the archive
+def testGetMetadata(bidsArchive3D, imageMetadata):
+    # all entities in imageMetadata should be returned
+    EXTENSION = '.nii'
+    returnedMeta = bidsArchive3D.getMetadata(bids_build_path(imageMetadata,
+                                                             BIDS_FILE_PATH_PATTERN)
+                                             + EXTENSION)
+    imageMetadata['extension'] = EXTENSION
+    imageMetadata['datatype'] = 'func'
+
+    diff = symmetricDictDifference(returnedMeta, imageMetadata, opeq)
+    assert diff == {}
 
 
 """ ----- BEGIN TEST APPENDING ----- """

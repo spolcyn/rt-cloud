@@ -17,7 +17,7 @@ import logging
 import nibabel as nib
 import numpy as np
 
-from rtCommon.errors import ValidationError
+from rtCommon.errors import MissingMetadataError
 from rtCommon.bidsCommon import (
     BidsFileExtension,
     BIDS_FILE_PATTERN,
@@ -29,6 +29,7 @@ from rtCommon.bidsCommon import (
     getNiftiData,
     loadBidsEntities,
     metadataFromProtocolName,
+    symmetricDictDifference,
 )
 
 logger = logging.getLogger(__name__)
@@ -57,7 +58,7 @@ class BidsIncremental:
                 to be placed in a dataset_description.json.
 
         Raises:
-            ValidationError: If any required argument is None.
+            ValidationError: If any required metadata is missing.
 
         """
 
@@ -66,20 +67,20 @@ class BidsIncremental:
         if image is None or \
                 (type(image) is not nib.Nifti1Image and
                  type(image) is not nib.Nifti2Image):
-            raise ValidationError("Image must be NIBabel Nifti 1 or 2 image, "
-                                  "got type %s" % str(type(image)))
+            raise TypeError("Image must be NIBabel Nifti 1 or 2 image, "
+                            "got type %s" % str(type(image)))
         # IMAGE METADATA
         missingImageMetadata = self.missingImageMetadata(imageMetadata)
         if missingImageMetadata != []:
-            raise ValidationError(f"Image metadata missing required fields: "
-                                  f"{missingImageMetadata}")
+            raise MissingMetadataError(f"Image metadata missing required "
+                                       f"fields: {missingImageMetadata}")
 
         # DATASET METADATA
         if datasetMetadata is not None:
             missingFields = [field for field in DATASET_DESC_REQ_FIELDS
                              if datasetMetadata.get(field, None) is None]
             if missingFields:
-                raise ValidationError(
+                raise MissingMetadataError(
                     f"Dataset description needs: {str(missingFields)}")
 
         """ Store image metadata """
@@ -116,7 +117,7 @@ class BidsIncremental:
         # Validate dimensions, upgrading if needed
         imageShape = self.imageDimensions
         if len(imageShape) < 3:
-            raise ValidationError("Image must have at least 3 dimensions")
+            raise ValueError("Image must have at least 3 dimensions")
         elif len(imageShape) == 3:
             # Add one singleton dimension to make image 4-D
             newData = np.expand_dims(getNiftiData(self.image), -1)
@@ -143,26 +144,10 @@ class BidsIncremental:
             self.version)
 
     def __eq__(self, other):
-        def symmetricDifference(d1: dict, d2: dict,
-                                equal: Callable[[Any, Any], bool],
-                                ) -> dict:
-            sharedKeys = d1.keys() & d2.keys()
-            difference = {key: [d1[key], d2[key]]
-                          for key in sharedKeys
-                          if not equal(d1[key], d2[key])}
-
-            d1OnlyKeys = d1.keys() - d2.keys()
-            difference.update({key: [d1[key], None] for key in d1OnlyKeys})
-
-            d2OnlyKeys = d2.keys() - d1.keys()
-            difference.update({key: [None, d2[key]] for key in d2OnlyKeys})
-
-            return difference
-
         def reportDifference(valueName: str, d1: dict, d2: dict,
                              equal: Callable[[Any, Any], bool] = opeq) -> None:
             logger.debug(valueName + " didn't match")
-            difference = symmetricDifference(d1, d2, equal)
+            difference = symmetricDictDifference(d1, d2, equal)
             logger.debug(valueName + " difference: %s", difference)
 
         # Compare images

@@ -10,7 +10,7 @@ import functools
 import logging
 import os
 import re
-from typing import Tuple
+from typing import Any, Callable, Tuple
 
 import pydicom
 import numpy as np
@@ -212,3 +212,19 @@ def getDicomMetadata(dicomImg: pydicom.dataset.Dataset) -> Tuple[dict, dict]:
             publicMeta[cleanedKey] = value
 
     return (publicMeta, privateMeta)
+
+
+def symmetricDictDifference(d1: dict, d2: dict,
+                            equal: Callable[[Any, Any], bool]) -> dict:
+    sharedKeys = d1.keys() & d2.keys()
+    difference = {key: [d1[key], d2[key]]
+                  for key in sharedKeys
+                  if not equal(d1[key], d2[key])}
+
+    d1OnlyKeys = d1.keys() - d2.keys()
+    difference.update({key: [d1[key], None] for key in d1OnlyKeys})
+
+    d2OnlyKeys = d2.keys() - d1.keys()
+    difference.update({key: [None, d2[key]] for key in d2OnlyKeys})
+
+    return difference

@@ -145,7 +145,7 @@ def imageMetadata(dicomImageMetadata):
     well as extra metadata extracted from the test DICOM image.
     """
     meta = {'subject': '01', 'task': 'faces', 'suffix': 'bold',  # REQUIRED
-            'session': '01', 'run': '1'}  # EXTRACTED
+            'session': '01', 'run': 1}  # EXTRACTED
     meta.update(dicomImageMetadata)  # DICOM
     return meta
 

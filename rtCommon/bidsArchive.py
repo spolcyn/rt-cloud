@@ -127,6 +127,8 @@ class BidsArchive:
         return os.path.join(self.rootPath, self._stripRoot(relPath))
 
     def fileExists(self, relPath: str) -> bool:
+        # TODO(spolcyn): Clarify what this method does, and why it's needed.
+        # How does it differ from os.path.exists?
         if self.data is None:
             return False
 
@@ -146,7 +148,7 @@ class BidsArchive:
         return self.fileExists(path) or self.dirExists(path)
 
     @failIfEmpty
-    def getImages(self, entities: dict,
+    def getImages(self, entities: dict = {},
                   matchExact: bool = False) -> List[nib.Nifti1Image]:
         """
         Return all images that have the provided entities. If no entities are
@@ -249,23 +251,6 @@ class BidsArchive:
         if layoutUpdateRequired:
             self._updateLayout()
 
-    def getFileMetadata(self, path: str) -> dict:
-        """
-        Gets metadata for the file at path in the dataset. For an image file,
-        this will include the entities embedded in the pathname (e.g, 'subject')
-        as well as the metdata found in any sidecar metadata files.
-
-        Args:
-            path: Relative path to the file to obtain metdata for.
-
-        Returns:
-            Dictionary with sidecar metadata for the file and any metadata that
-                can be extracted from the filename (e.g., subject, session)
-
-        """
-        return self.data.get_metadata(self.absPathFromRelPath(path),
-                                      include_entities=True)
-
     def addMetadata(self, metadata: dict, path: str) -> None:
         absPath = self.absPathFromRelPath(path)
 
@@ -276,7 +261,16 @@ class BidsArchive:
 
         self._updateLayout()
 
-    def findFiles(self, path: str) -> List:
+    # Used to update the archive if any on-disk changes have happened
+    def _update(self):
+        if self.data:
+            self._updateLayout()
+
+    def isEmpty(self) -> bool:
+        return (self.data is None)
+
+    @failIfEmpty
+    def getFilesForPath(self, path: str) -> List:
         """
         Finds all files within the dataset at the provided path. Path should be
         relative to dataset root.
@@ -299,21 +293,29 @@ class BidsArchive:
 
         return matchingFiles
 
-    # Used to update the archive if any on-disk changes have happened
-    def _update(self):
-        if self.data:
-            self._updateLayout()
-
-    def isEmpty(self) -> bool:
-        return (self.data is None)
-
-    @failIfEmpty
-    def getFilesForPath(self, path: str) -> List:
-        return self.findFiles(path)
-
     @failIfEmpty
     def getMetadata(self, path: str) -> dict:
-        return self.getFileMetadata(path)
+        """
+        Gets metadata for the file at path in the dataset. For an image file,
+        this will include the entities embedded in the pathname (e.g, 'subject')
+        as well as the metdata found in any sidecar metadata files.
+
+        Args:
+            path: Relative path to the file to obtain metdata for.
+
+        Returns:
+            Dictionary with sidecar metadata for the file and any metadata that
+                can be extracted from the filename (e.g., subject, session)
+
+        """
+        if not self.fileExists(path):
+            if self.fileExists(os.path.relpath(path, start=self.rootPath)):
+                path = os.path.relpath(path, start=self.rootPath)
+            else:
+                raise NoMatchError("File doesn't exist, can't get metadata")
+
+        absPath = self.absPathFromRelPath(path)
+        return self.data.get_metadata(absPath, include_entities=True)
 
     @staticmethod
     def _imagesAppendCompatible(img1: nib.Nifti1Image, img2: nib.Nifti1Image):
