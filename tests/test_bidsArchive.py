@@ -214,6 +214,19 @@ def testGetMetadata(bidsArchive3D, imageMetadata):
     diff = symmetricDictDifference(returnedMeta, imageMetadata, opeq)
     assert diff == {}
 
+# Test getting an event file from the archive
+def testGetEvents(validBidsI, imageMetadata, tmpdir):
+    archive = BidsArchive(tmpdir)
+    archive.appendIncremental(validBidsI)
+
+    # Get the events from the archive as a pandas data frame
+    events = archive.getEvents()[0].get_df()
+    assert events is not None
+
+    # Check the required columns are present in the events file data frame
+    for column in ['onset', 'duration', 'response_time']:
+        assert column in events.columns
+
 
 """ ----- BEGIN TEST APPENDING ----- """
 

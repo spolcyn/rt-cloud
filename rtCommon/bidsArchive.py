@@ -17,6 +17,7 @@ from bids.exceptions import (
     NoMatchError,
 )
 from bids.layout import (
+    BIDSDataFile,
     BIDSFile,
     BIDSImageFile,
     BIDSLayout,
@@ -80,8 +81,8 @@ class BidsArchive:
         try:
             self.data = BIDSLayout(rootPath)
         except Exception as e:
-            logger.info("Failed to open dataset at %s (%s)",
-                        self.rootPath, str(e))
+            logger.debug("Failed to open dataset at %s (%s)",
+                         self.rootPath, str(e))
             self.data: BIDSLayout = None
 
     def __str__(self):
@@ -108,7 +109,6 @@ class BidsArchive:
             except AttributeError:
                 raise AttributeError("{} object has no attribute {}".format(
                     self.__class__.__name__, originalAttr))
-
 
     """ Utility functions """
     @staticmethod
@@ -362,6 +362,65 @@ class BidsArchive:
         else:
             return self.data.get_metadata(target.path,
                                           include_entities=includeEntities)
+
+    @failIfEmpty
+    def getEvents(self, matchExact: bool = False,
+                  **entities) -> List[BIDSDataFile]:
+        """
+        Gets data from scanner run event files in the archive. Event files to
+        retrieve can be filtered by entities present in the files' names.
+
+        Args:
+            matchExact: Whether to only return events files that have exactly
+                the same entities as provided (no more, no less)
+            entities: Keyword arguments for entities to filter by. Provide in
+                the format entity='value'.
+
+        Returns:
+            A list of BIDSDataFile objects encapsulating the events files
+            matching the provided entities (empty if there are no matches, and
+            containing at most a single object if an exact match is requested).
+
+        Raises:
+            ValueError: If the 'extension' entity is provided and not valid for
+                an events file (i.e., not '.tsv' or '.tsv.gz')
+
+        Examples:
+            >>> archive = BidsArchive('.')
+            >>> archive.getEvents()
+            [<BIDSDataFile filename='/tmp/dataset/sub-01/func/\
+            sub-01_task-test_events.tsv'>, <BIDSDataFile
+            filename='/tmp/dataset/sub-02/func/sub-02_task-test_events.tsv'>]
+            >>> sub1Events = archive.getEvents(subject='01')
+            [<BIDSDataFile filename='/tmp/dataset/sub-01/func/\
+            sub-01_task-test_events.tsv'>]
+            >>> eventsDataFrame = sub1Events[0].get_df()
+            >>> print(eventsDataFrame[:][:1])
+                onset   duration    trial_type
+            0   0       30          rest
+        """
+        # Validate image extension specified
+        validExtensions = ['.tsv', '.tsv.gz']
+        extension = entities.get('extension', None)
+        if extension is not None and extension not in validExtensions:
+            raise ValueError(f'Extension must be one of {validExtensions}')
+
+        entities['suffix'] = 'events'
+
+        results = self.data.get(**entities)
+
+        if len(results) == 0:
+            logger.error(f"No event files have all provided entities: {entities}")
+            return []
+        elif matchExact:
+            for result in results:
+                if result.get_entities() == entities:
+                    return [result]
+
+            logger.error(f"No event files were an exact match for: {entities}")
+            return []
+        else:
+            return results
 
     @staticmethod
     def _imagesAppendCompatible(img1: nib.Nifti1Image, img2: nib.Nifti1Image):

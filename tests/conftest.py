@@ -11,8 +11,7 @@ import nibabel as nib
 import pydicom
 import pytest
 
-
-from common import (
+from tests.common import (
     test_dicomPath,
     test_3DNifti1Path,
     test_3DNifti2Path,
