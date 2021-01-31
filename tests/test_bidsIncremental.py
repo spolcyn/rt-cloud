@@ -20,7 +20,7 @@ from rtCommon.bidsCommon import (
     BIDS_FILE_PATTERN,
     metadataFromProtocolName,
 )
-from rtCommon.errors import ValidationError
+from rtCommon.errors import MissingMetadataError, ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -28,12 +28,12 @@ logger = logging.getLogger(__name__)
 # Test that construction fails for image metadata missing required fields
 def testInvalidConstruction(sample2DNifti1, sample4DNifti1, imageMetadata):
     # Test empty image
-    with pytest.raises(ValidationError):
+    with pytest.raises(TypeError):
         BidsIncremental(image=None,
                         imageMetadata=imageMetadata)
 
     # Test 2-D image
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValueError):
         BidsIncremental(image=sample2DNifti1,
                         imageMetadata=imageMetadata)
 
@@ -43,7 +43,7 @@ def testInvalidConstruction(sample2DNifti1, sample4DNifti1, imageMetadata):
         value = imageMetadata.pop(key)
 
         assert not BidsIncremental.isCompleteImageMetadata(imageMetadata)
-        with pytest.raises(ValidationError):
+        with pytest.raises(MissingMetadataError):
             BidsIncremental(image=sample4DNifti1,
                             imageMetadata=imageMetadata)
 
@@ -55,14 +55,14 @@ def testInvalidConstruction(sample2DNifti1, sample4DNifti1, imageMetadata):
         original = imageMetadata[key]
         imageMetadata[key] = 10**6
 
-        with pytest.raises(ValidationError):
+        with pytest.raises(ValueError):
             BidsIncremental(image=sample4DNifti1,
                             imageMetadata=imageMetadata)
 
         imageMetadata[key] = original
 
     # Test non-image object
-    with pytest.raises(ValidationError):
+    with pytest.raises(TypeError):
         BidsIncremental(image="definitely not an image",
                         imageMetadata=imageMetadata)
 
@@ -155,7 +155,7 @@ def testImageMetadataDictCreation(imageMetadata):
 # Test that invalid dataset.json fields are rejected and valid ones are accepted
 def testDatasetMetadata(sample4DNifti1, imageMetadata):
     # Test invalid dataset metadata
-    with pytest.raises(ValidationError):
+    with pytest.raises(MissingMetadataError):
         BidsIncremental(image=sample4DNifti1,
                         imageMetadata=imageMetadata,
                         datasetMetadata={"random_field": "doesnt work"})

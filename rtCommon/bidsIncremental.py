@@ -58,7 +58,7 @@ class BidsIncremental:
                 to be placed in a dataset_description.json.
 
         Raises:
-            ValidationError: If any required metadata is missing.
+            MissingMetadataError: If any required metadata is missing.
 
         """
 
@@ -69,11 +69,6 @@ class BidsIncremental:
                  type(image) is not nib.Nifti2Image):
             raise TypeError("Image must be NIBabel Nifti 1 or 2 image, "
                             "got type %s" % str(type(image)))
-        # IMAGE METADATA
-        missingImageMetadata = self.missingImageMetadata(imageMetadata)
-        if missingImageMetadata != []:
-            raise MissingMetadataError(f"Image metadata missing required "
-                                       f"fields: {missingImageMetadata}")
 
         # DATASET METADATA
         if datasetMetadata is not None:
@@ -88,6 +83,14 @@ class BidsIncremental:
         protocolName = imageMetadata.get("ProtocolName", None)
         self._imgMetadata = metadataFromProtocolName(protocolName)
         self._imgMetadata.update(imageMetadata)
+
+        # IMAGE METADATA
+        # TODO(spolcyn): Attempt to extract the repetition time directly from
+        # the NIfTI header
+        missingImageMetadata = self.missingImageMetadata(self._imgMetadata)
+        if missingImageMetadata != []:
+            raise MissingMetadataError(f"Image metadata missing required "
+                                       f"fields: {missingImageMetadata}")
 
         # Validate or modify fields that are now known to exist
         if self._imgMetadata.get("run", None) is not None:
@@ -123,10 +126,14 @@ class BidsIncremental:
             newData = np.expand_dims(getNiftiData(self.image), -1)
             self.image = self.image.__class__(newData, self.image.affine,
                                               self.image.header)
+            # TODO(spolcyn): Fix xyzt units when data is extended from 3D to 4D
 
-        # Update the time dimension size with the TR length
+        # Ensure time dimension size matches TR length
         self.imageHeader["pixdim"][4] = \
             self.getMetadataField("RepetitionTime")
+
+        logger.debug("Image header xyzt units: %s",
+                     self.imageHeader['xyzt_units'])
 
         self._imageDataArray = getNiftiData(self.image)
         assert len(self.imageDimensions) == 4
@@ -407,6 +414,7 @@ class BidsIncremental:
         Args:
             datasetRoot: Path to the root of the BIDS archive to be written to.
         """
+        # TODO(spolcyn): Convert this to using bids_build_path
         # Build path to the data directory
         # Overall hierarchy:
         # sub-<participant_label>/[/ses-<session_label>]/<data_type>/

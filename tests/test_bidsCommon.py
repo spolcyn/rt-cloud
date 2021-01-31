@@ -41,7 +41,7 @@ def testTimeUnitAdjustment():
     metadata[rtKey] = rtAboveMax
     metadata[etKey] = etAboveMax
 
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValueError):
         adjustTimeUnits(metadata)
 
     # Test values within max

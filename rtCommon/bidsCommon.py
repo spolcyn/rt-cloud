@@ -146,9 +146,8 @@ def adjustTimeUnits(imageMetadata: dict) -> None:
             value = value / 1000.0
             imageMetadata[field] = value
         else:
-            raise ValidationError(f"{field}'s max value is {maxValue}; {value} "
-                                  f"> {maxValue} even if interpreted as "
-                                  f"milliseconds.")
+            raise ValueError(f"{field}'s max value is {maxValue}; {value} > "
+                             f"{maxValue} even if interpreted as milliseconds.")
 
 
 def metadataFromProtocolName(protocolName: str) -> dict:
