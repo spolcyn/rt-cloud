@@ -36,14 +36,6 @@ rtCommon.bidsIncremental module
    :undoc-members:
    :show-inheritance:
 
-rtCommon.bidsLibrary module
----------------------------
-
-.. automodule:: rtCommon.bidsLibrary
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
 rtCommon.certsUtils module
 --------------------------
 

@@ -15,24 +15,22 @@ import sys
 sys.path.insert(0, os.path.abspath('../../'))
 
 # mock for big imports
-# autodoc_mock_imports = ['bcrypt',
-#                         'bids',
-#                         'matplotlib',
-#                         'nibabel',
+autodoc_mock_imports = [
+    'nilearn', 'nibabel', 'bids', 'matplotlib', 'pydicom', 'brainiak']
+#                         'bcrypt',
+#                         'numpy',
 #                         'OpenSSL',
 #                         'inotify',
-#                         'numpy',
 #                         'pydicom',
 #                         'rpyc',
 #                         'cryptography',
-#                         'brainiak',
-#                         'websocket', 'nilearn',
+#                         'websocket',
 #                         'watchdog',
 #                         'rtCommon.harness',
 #                         'scipy',
 #                         'tornado',
 #                         'toml',
-#                         'yaml']
+#                         'yaml'
 
 # -- Project information -----------------------------------------------------
 
@@ -59,6 +57,9 @@ templates_path = ['_templates']
 # This pattern also affects html_static_path and html_extra_path.
 exclude_patterns = []
 
+# To document __init__
+# https://stackoverflow.com/questions/5599254/how-to-use-sphinxs-autodoc-to-document-a-classs-init-self-method
+autoclass_content = 'both'
 
 # -- Options for HTML output -------------------------------------------------
 
