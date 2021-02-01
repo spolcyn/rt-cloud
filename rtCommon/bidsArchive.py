@@ -261,7 +261,7 @@ class BidsArchive:
         # the SQL DB it uses)
         self.data = BIDSLayout(self.rootPath)
 
-    def addImage(self, img: nib.Nifti1Image, path: str) -> None:
+    def _addImage(self, img: nib.Nifti1Image, path: str) -> None:
         """
         Add an image to the dataset at the provided path, creating the path if
         it does not yet exist.
@@ -275,7 +275,7 @@ class BidsArchive:
         if layoutUpdateRequired:
             self._updateLayout()
 
-    def addMetadata(self, metadata: dict, path: str) -> None:
+    def _addMetadata(self, metadata: dict, path: str) -> None:
         absPath = self.absPathFromRelPath(path)
 
         with open(absPath, 'w', encoding='utf-8') as metadataFile:
@@ -410,7 +410,8 @@ class BidsArchive:
         results = self.data.get(**entities)
 
         if len(results) == 0:
-            logger.error(f"No event files have all provided entities: {entities}")
+            logger.error(f"No event files have all provided entities: "
+                         f"{entities}")
             return []
         elif matchExact:
             for result in results:
@@ -584,18 +585,39 @@ class BidsArchive:
 
     def appendIncremental(self,
                           incremental: BidsIncremental,
-                          makePath: bool = True) -> None:
+                          makePath: bool = True) -> bool:
         """
         Appends a BIDS Incremental's image data and metadata to the archive,
         creating new directories if necessary (this behavior can be overridden).
 
         Args:
             incremental: BIDS Incremental to append
-            makePath: Create new directory path for BIDS-I data if needed
+            makePath: Create new directory path for BIDS-I data if needed.
+                (default: True).
 
         Raises:
-            ValidationError: If the image path within the BIDS-I would result in
+            StateError: If the image path within the BIDS-I would result in
                 directory creation and makePath is set to False.
+            ValidationError: If the data to append is incompatible with existing
+                data in the archive.
+
+        Returns:
+            True if the append succeeded, False otherwise.
+
+        Examples:
+            Assume we have a NIfTI image 'image' and a metadata dictionary
+            'metdata' with all required metadata for a BIDS Incremental.
+
+            >>> archive = BidsArchive('.')
+            >>> incremental = BidsIncremental(image, metadata)
+            >>> archive.appendIncremental(incremental)
+
+            If we don't want to create any new files/directories in the archive,
+            makePath can be set to false.
+
+            >>> archive = BidsArchive('/tmp/emptyDirectory')
+            >>> archive.appendIncremental(incremental, makePath=False)
+            False
         """
         # 1) Create target path for image in archive
         dataDirPath = incremental.dataDirPath()
@@ -656,66 +678,71 @@ class BidsArchive:
                                      archiveImg.affine,
                                      header=archiveImg.header)
             newImg.update_header()
-            self.addImage(newImg, imgPath)
+            self._addImage(newImg, imgPath)
 
         # 2.2) Image doesn't exist in archive, but rest of the path is valid for
         # the archive; create new Nifti file within the archive
         elif self.pathExists(dataDirPath) or makePath:
             logger.debug("Image doesn't exist in archive, creating")
 
-            self.addImage(incremental.image, imgPath)
-            self.addMetadata(incremental.imgMetadata, metadataPath)
+            self._addImage(incremental.image, imgPath)
+            self._addMetadata(incremental.imgMetadata, metadataPath)
 
         else:
-            raise StateError("No valid archive path for image and no override"
-                             "specified, can't append")
+            # TODO(spolcyn): Ensure that there shouldn't be an extra case in
+            # which an exception is thrown
+            return False
 
     @failIfEmpty
-    def getIncremental(self, subject: str, task: str, suffix: str,
-                       datatype: str, sliceIndex: int = 0,
-                       **entities) -> BidsIncremental:
+    def getIncremental(self, sliceIndex: int = 0, **entities) \
+            -> BidsIncremental:
         """
-        Creates a BIDS-Incremental file from the specified part of the BIDS
-        Archive.
+        Creates a BIDS Incremental from the specified part of the archive.
 
         Args:
-            subject: Subject ID to pull data for (for "sub-control01", ID is
-                "control01")
-            task: Task to pull data for (for "task-nback", name is "nback")
-            suffix: BIDS suffix for file, which is image contrast for fMRI
-                (bold, cbv, or phase)
-            sliceIndex: Index of 3_D image to select in a 4-D sequence of images
-            datatype: Type of data to pull (common types: anat, func, dwi, fmap)
-                This string must be the same as the name of the directory
-                containing the image data.
-            otherLabels: Other entity labels specifying appropriate file to pull
-                data for (e.g., 'run', 'rec', 'dir', 'echo')
+            sliceIndex: Index of 3-D image to select in a 4-D image volume.
+            entities: Keyword arguments for entities to filter by. Provide in
+                the format entity='value'.
 
         Returns:
             BIDS-Incremental file with the specified image of the archive and
-                its associated metadata
+            its associated metadata.
+
+        Raises:
+            NoMatchError: When no images that match the provided entities are
+                found in the archive
+            RuntimeError: When too many images that match the provided entities
+                are found in the archive.
+            ValueError: If the image matching the provided entities has fewer
+                than 3 dimensions or greater than 4.
+            MissingMetadataError: If the archive lacks the required metadata to
+                make a BIDS Incremental out of an image in the archive.
 
         Examples:
+            >>> archive = BidsArchive('.')
+            >>> inc = archive.getIncremental(subject='01', task='test')
+            >>> entityFilterDict = {'subject': '01', 'task': 'test'}
+            >>> inc2 = archive.getIncremental(**entityFilterDict)
+            >>> inc == inc2
+            True
+            >>> inc.imageDimensions
+            (64, 64, 27, 1)
         """
         if sliceIndex < 0:
             logger.error(f"Slice index must be >= 0 (got {sliceIndex})")
             return None
 
-        # Fold required arguments into entities dictionary
-        entities.update({'subject': subject, 'task': task,
-                         'suffix': suffix, 'datatype': datatype})
+        # Ensure an image extension is in the entities
 
-        candidates = self.data.get(**entities)
-        candidates = [c for c in candidates if type(c) is BIDSImageFile]
+        candidates = self.getImages(**entities)
 
         # Throw error if not exactly one match
         if len(candidates) == 0:
             raise NoMatchError("Unable to find any data in archive that matches"
-                               f" all provided entities (got: {entities})")
+                               f" all provided entities: {entities}")
         elif len(candidates) > 1:
-            # TODO(spolcyn): Make more specific exception type
-            raise Exception("Too many candidates for entities " + str(entities)
-                            + '(got: ' + str(candidates))
+            raise RuntimeError("Too many results for entities (expected 1, got "
+                               f"{len(candidates)})")
 
         # Create BIDS-I
         candidate = candidates[0]

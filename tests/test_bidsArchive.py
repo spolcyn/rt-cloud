@@ -406,16 +406,15 @@ def test3DAppend(bidsArchive3D, validBidsI, imageMetadata):
 def testAppendNoMakePath(bidsArchive3D, validBidsI, tmpdir):
     # Append to empty archive specifying not to make any files or directories
     datasetRoot = Path(tmpdir, testEmptyArchiveAppend.__name__)
-    with pytest.raises(StateError):
-        BidsArchive(datasetRoot).appendIncremental(validBidsI, makePath=False)
+    assert not BidsArchive(datasetRoot).appendIncremental(validBidsI,
+                                                          makePath=False)
 
     # Append to populated archive in a way that would require new directories
     # and files without allowing it
     validBidsI.setMetadataField('subject', 'invalidSubject')
     validBidsI.setMetadataField('run', 42)
 
-    with pytest.raises(StateError):
-        bidsArchive3D.appendIncremental(validBidsI, makePath=False)
+    assert not bidsArchive3D.appendIncremental(validBidsI, makePath=False)
 
 
 # Test appending raises error when NIfTI headers incompatible with existing
@@ -494,10 +493,10 @@ def testStripImage(bidsArchive3D, bidsArchive4D, sample3DNifti1, sample4DNifti1,
     # 3D Case
     reference = BidsIncremental(sample3DNifti1, imageMetadata)
     incremental = bidsArchive3D.getIncremental(
-        imageMetadata["subject"],
-        imageMetadata["task"],
-        imageMetadata["suffix"],
-        "func",
+        subject=imageMetadata["subject"],
+        task=imageMetadata["task"],
+        suffix=imageMetadata["suffix"],
+        datatype="func",
         session=imageMetadata["session"])
 
     # 3D image still results in 4D incremental
@@ -511,12 +510,12 @@ def testStripImage(bidsArchive3D, bidsArchive4D, sample3DNifti1, sample4DNifti1,
     reference = BidsIncremental(sample3DNifti1, imageMetadata)
     for index in range(0, 2):
         incremental = bidsArchive4D.getIncremental(
-                        imageMetadata["subject"],
-                        imageMetadata["task"],
-                        imageMetadata["suffix"],
-                        "func",
-                        sliceIndex=index,
-                        session=imageMetadata["session"])
+            subject=imageMetadata["subject"],
+            task=imageMetadata["task"],
+            suffix=imageMetadata["suffix"],
+            datatype="func",
+            sliceIndex=index,
+            session=imageMetadata["session"])
 
         assert len(incremental.imageDimensions) == 4
         assert incremental.imageDimensions[3] == 1
@@ -530,10 +529,10 @@ def testStripNoMatchingImage(bidsArchive4D, imageMetadata):
     imageMetadata['subject'] = 'notPresent'
     with pytest.raises(NoMatchError):
         incremental = bidsArchive4D.getIncremental(
-            imageMetadata["subject"],
-            imageMetadata["task"],
-            imageMetadata["suffix"],
-            "func",
+            subject=imageMetadata["subject"],
+            task=imageMetadata["task"],
+            suffix=imageMetadata["suffix"],
+            datatype="func",
             session=imageMetadata["session"])
 
         assert incremental is None
@@ -561,11 +560,12 @@ def testStripNoMatchingMetadata(bidsArchive4D, imageMetadata, caplog, tmpdir):
     errorText = r"Archive lacks required metadata for BIDS Incremental " \
                 r"creation: .*"
     with pytest.raises(MissingMetadataError, match=errorText):
-        bidsArchive4D.getIncremental(imageMetadata["subject"],
-                                     imageMetadata["task"],
-                                     imageMetadata["suffix"],
-                                     "func",
-                                     session=imageMetadata["session"])
+        bidsArchive4D.getIncremental(
+            subject=imageMetadata["subject"],
+            task=imageMetadata["task"],
+            suffix=imageMetadata["suffix"],
+            datatype="func",
+            session=imageMetadata["session"])
 
 
 # Test strip with an out-of-bounds slice index for the matching image (could be
@@ -575,10 +575,10 @@ def testStripSliceIndexOutOfBounds(bidsArchive3D, bidsArchive4D, imageMetadata,
     # Negative case
     outOfBoundsIndex = -1
     incremental = bidsArchive3D.getIncremental(
-        imageMetadata["subject"],
-        imageMetadata["task"],
-        imageMetadata["suffix"],
-        "func",
+        subject=imageMetadata["subject"],
+        task=imageMetadata["task"],
+        suffix=imageMetadata["suffix"],
+        datatype="func",
         sliceIndex=-1,
         session=imageMetadata["session"])
 
@@ -588,10 +588,10 @@ def testStripSliceIndexOutOfBounds(bidsArchive3D, bidsArchive4D, imageMetadata,
     # 3D case
     outOfBoundsIndex = 1
     incremental = bidsArchive3D.getIncremental(
-        imageMetadata["subject"],
-        imageMetadata["task"],
-        imageMetadata["suffix"],
-        "func",
+        subject=imageMetadata["subject"],
+        task=imageMetadata["task"],
+        suffix=imageMetadata["suffix"],
+        datatype="func",
         sliceIndex=outOfBoundsIndex,
         session=imageMetadata["session"])
 
@@ -603,10 +603,10 @@ def testStripSliceIndexOutOfBounds(bidsArchive3D, bidsArchive4D, imageMetadata,
     outOfBoundsIndex = 4
     archiveLength = 2
     incremental = bidsArchive4D.getIncremental(
-        imageMetadata["subject"],
-        imageMetadata["task"],
-        imageMetadata["suffix"],
-        "func",
+        subject=imageMetadata["subject"],
+        task=imageMetadata["task"],
+        suffix=imageMetadata["suffix"],
+        datatype="func",
         sliceIndex=outOfBoundsIndex,
         session=imageMetadata["session"])
 
@@ -620,13 +620,13 @@ def testStripSliceIndexOutOfBounds(bidsArchive3D, bidsArchive4D, imageMetadata,
 def testStripNoParameterMatch(bidsArchive4D, imageMetadata, caplog):
     # Test entity values that don't exist in the archive
     errorText = r"Unable to find any data in archive that matches" \
-                r" all provided entities \(got: \{.*?\}\)"
+                r" all provided entities: \{.*?\}"
     with pytest.raises(NoMatchError, match=errorText):
         incremental = bidsArchive4D.getIncremental(
-            imageMetadata["subject"],
-            imageMetadata["task"],
-            imageMetadata["suffix"],
-            "func",
+            subject=imageMetadata["subject"],
+            task=imageMetadata["task"],
+            suffix=imageMetadata["suffix"],
+            datatype="func",
             session=imageMetadata['session'],
             run=2)
 
