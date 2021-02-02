@@ -615,9 +615,9 @@ class BidsArchive:
             False
         """
         # 1) Create target path for image in archive
-        dataDirPath = incremental.dataDirPath()
-        imgPath = incremental.imageFilePath()
-        metadataPath = incremental.metadataFilePath()
+        dataDirPath = incremental.dataDirPath
+        imgPath = incremental.imageFilePath
+        metadataPath = incremental.metadataFilePath
 
         # 2) Verify we have a valid way to append the image to the archive.
         # 3 cases:

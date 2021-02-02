@@ -371,24 +371,31 @@ class BidsIncremental:
 
         return bids_build_path(entities, BIDS_FILE_PATTERN)
 
-    def imageFileName(self) -> str:
-        return self.makeBidsFileName(BidsFileExtension.IMAGE)
-
-    def metadataFileName(self) -> str:
-        return self.makeBidsFileName(BidsFileExtension.METADATA)
-
-    def eventsFileName(self) -> str:
-        return self.makeBidsFileName(BidsFileExtension.EVENTS)
-
+    @property
     def datasetName(self) -> str:
         return self.datasetMetadata["Name"]
 
+    @property
+    def imageFileName(self) -> str:
+        return self.makeBidsFileName(BidsFileExtension.IMAGE)
+
+    @property
+    def metadataFileName(self) -> str:
+        return self.makeBidsFileName(BidsFileExtension.METADATA)
+
+    @property
+    def eventsFileName(self) -> str:
+        return self.makeBidsFileName(BidsFileExtension.EVENTS)
+
+    @property
     def imageFilePath(self) -> str:
-        return os.path.join(self.dataDirPath(), self.imageFileName())
+        return os.path.join(self.dataDirPath, self.imageFileName)
 
+    @property
     def metadataFilePath(self) -> str:
-        return os.path.join(self.dataDirPath(), self.metadataFileName())
+        return os.path.join(self.dataDirPath, self.metadataFileName)
 
+    @property
     def dataDirPath(self) -> str:
         """
         Path to where this incremental's data would be in a BIDS archive,
@@ -398,12 +405,11 @@ class BidsIncremental:
             Path string relative to root of the imaginary dataset.
 
         Examples:
-            >>> print(bidsi.dataDirPath())
-            /sub-01/ses-2011/anat/
+            >>> print(bidsi.dataDirPath)
+            sub-01/ses-2011/anat
 
         """
-        path = bids_build_path(self._imgMetadata, BIDS_DIR_PATH_PATTERN)
-        return f"/{path}/"
+        return bids_build_path(self._imgMetadata, BIDS_DIR_PATH_PATTERN)
 
     def writeToArchive(self, datasetRoot: str):
         """
@@ -414,35 +420,24 @@ class BidsIncremental:
         Args:
             datasetRoot: Path to the root of the BIDS archive to be written to.
         """
-        # TODO(spolcyn): Convert this to using bids_build_path
-        # Build path to the data directory
-        # Overall hierarchy:
-        # sub-<participant_label>/[/ses-<session_label>]/<data_type>/
-        pathElements = ['sub-' + self.getMetadataField("subject")]
+        dataDirPath = os.path.join(datasetRoot, self.dataDirPath)
+        imagePath = os.path.join(dataDirPath, self.imageFileName)
+        metadataPath = os.path.join(dataDirPath, self.metadataFileName)
 
-        session = self.getMetadataField("session")
-        if session:
-            pathElements.append('ses-' + session)
-
-        pathElements.append(self.datatype)
-
-        dataDirPath = os.path.join(datasetRoot, *pathElements)
         os.makedirs(dataDirPath, exist_ok=True)
-
-        # Write image to data folder
-        imagePath = os.path.join(dataDirPath, self.imageFileName())
         nib.save(self.image, imagePath)
 
         # Write out image metadata
-        metadataPath = os.path.join(dataDirPath, self.metadataFileName())
         with open(metadataPath, mode='w') as metadataFile:
             # TODO(spolcyn): Don't write out entities like 'subject', "task",
             # and "run", as they're included in the filename
-            json.dump(self._imgMetadata, metadataFile, sort_keys=True, indent=4)
+            metadataToWrite = {key: self._imgMetadata[key] for key in
+                               self._imgMetadata if key not in self.ENTITIES}
+            json.dump(metadataToWrite, metadataFile, sort_keys=True, indent=4)
 
         # TODO(spolcyn): Make events file correspond correctly to the imaging
         # sequence, not just to fulfill BIDS validation
-        eventsPath = os.path.join(dataDirPath, self.eventsFileName())
+        eventsPath = os.path.join(dataDirPath, self.eventsFileName)
         with open(eventsPath, mode='w') as eventsFile:
             eventsFile.write('onset\tduration\tresponse_time\n')
 

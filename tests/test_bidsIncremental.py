@@ -166,7 +166,7 @@ def testDatasetMetadata(sample4DNifti1, imageMetadata):
                               imageMetadata=imageMetadata,
                               datasetMetadata={"Name": dataset_name,
                                                "BIDSVersion": "1.0"})
-    assert bidsInc.datasetName() == dataset_name
+    assert bidsInc.datasetName == dataset_name
 
 
 # Test that extracting metadata from the BIDS-I using its provided API returns
@@ -278,8 +278,8 @@ def testFilenameConstruction(validBidsI, imageMetadata):
 # Test that the hypothetical path for the BIDS-I if it were in an archive is
 # correct based on the metadata within it
 def testArchivePathConstruction(validBidsI, imageMetadata):
-    assert validBidsI.dataDirPath() == \
-        '/' + bids_build_path(imageMetadata, BIDS_DIR_PATH_PATTERN) + '/'
+    assert validBidsI.dataDirPath == \
+        bids_build_path(imageMetadata, BIDS_DIR_PATH_PATTERN)
 
 
 # Test that writing the BIDS-I to disk returns a properly formatted BIDS archive
