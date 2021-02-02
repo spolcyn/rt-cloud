@@ -78,33 +78,9 @@ class BidsIncremental:
                     f"Dataset description needs: {str(missingFields)}")
 
         """ Store image metadata """
-        # Ensure BIDS-I has an independent metadata dictionary
-        protocolName = imageMetadata.get("ProtocolName", None)
-        self._imgMetadata = metadataFromProtocolName(protocolName)
-        self._imgMetadata.update(imageMetadata)
-
-        # IMAGE METADATA
-        # TODO(spolcyn): Attempt to extract the repetition time directly from
-        # the NIfTI header
-        missingImageMetadata = self.missingImageMetadata(self._imgMetadata)
-        if missingImageMetadata != []:
-            raise MissingMetadataError(f"Image metadata missing required "
-                                       f"fields: {missingImageMetadata}")
-
-        # Validate or modify fields that are now known to exist
-        if self._imgMetadata.get("run", None) is not None:
-            self._imgMetadata["run"] = int(self._imgMetadata["run"])
-
-        self._imgMetadata["TaskName"] = self._imgMetadata["task"]
-
-        # Ensure datatype is set, assume functional
-        if self._imgMetadata.get("datatype", None) is None:
-            self._imgMetadata["datatype"] = "func"
-
-        # TODO(spolcyn): Correctly extract slice timing from the metadata
-        # TODO(spolcyn): Support volume timing and associated fields
-        self._imgMetadata["SliceTiming"] = list(np.linspace(0.0, 1.5, 27))
-        adjustTimeUnits(self._imgMetadata)
+        self._preprocessAndSetMetadata(imageMetadata)
+        self._assertHaveRequiredMetadata()
+        self._postprocessMetadata()
 
         """ Store dataset metadata """
         if datasetMetadata is None:
@@ -188,6 +164,52 @@ class BidsIncremental:
             return False
 
         return True
+
+    def _preprocessAndSetMetadata(self, imageMetadata: dict) -> None:
+        """
+        Pre-process metadata to extract any additonal metadata that might be
+        embedded in the provided metadata, like ProtocolName.
+        """
+        # Process ProtocolName
+        protocolName = imageMetadata.get("ProtocolName", None)
+        self._imgMetadata = metadataFromProtocolName(protocolName)
+        logger.debug(f"From ProtocolName '{protocolName}', got: "
+                     f"{self._imgMetadata}")
+
+        # TODO(spolcyn): Attempt to extract the repetition time directly from
+        # the NIfTI header when possible
+
+        # TODO(spolcyn): Correctly extract slice timing from the metadata
+        self._imgMetadata["SliceTiming"] = list(np.linspace(0.0, 1.5, 27))
+
+        # TODO(spolcyn): Support volume timing and associated fields
+
+        self._imgMetadata.update(imageMetadata)
+        adjustTimeUnits(self._imgMetadata)
+
+    def _postprocessMetadata(self) -> None:
+        """
+        Post-process metadata once all required fields are given to create
+        derived fields (e.g., TaskName from task) and set data types to expected
+        types (e.g., set run to an integer).
+        """
+        # Run should be an integer
+        if self._imgMetadata.get("run", None) is not None:
+            self._imgMetadata["run"] = int(self._imgMetadata["run"])
+
+        # TaskName is required BIDS metadata that can be derived from the
+        # required field, 'task'
+        self._imgMetadata["TaskName"] = self._imgMetadata["task"]
+
+    def _assertHaveRequiredMetadata(self) -> None:
+        """
+        Ensure that all required metadata is present, raising an exception with
+        information on what's missing if not all is present.
+        """
+        missingImageMetadata = self.missingImageMetadata(self._imgMetadata)
+        if missingImageMetadata != []:
+            raise MissingMetadataError(f"Image metadata missing required "
+                                       f"fields: {missingImageMetadata}")
 
     @staticmethod
     def createImageMetadataDict(subject: str, task: str, suffix: str,
