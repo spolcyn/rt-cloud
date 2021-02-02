@@ -142,14 +142,40 @@ def testEquals(sample4DNifti1, sample3DNifti1, imageMetadata):
 # Test that image metadata dictionaries can be properly created by the class
 def testImageMetadataDictCreation(imageMetadata):
     createdDict = BidsIncremental.createImageMetadataDict(
-                    subject=imageMetadata["subject"],
-                    task=imageMetadata["task"],
-                    suffix=imageMetadata["suffix"],
-                    repetitionTime=imageMetadata["RepetitionTime"],
-                    echoTime=imageMetadata["EchoTime"])
+        subject=imageMetadata["subject"],
+        task=imageMetadata["task"],
+        suffix=imageMetadata["suffix"],
+        repetitionTime=imageMetadata["RepetitionTime"],
+        echoTime=imageMetadata["EchoTime"],
+        datatype='func')
+
 
     for key in createdDict.keys():
         assert createdDict.get(key) == imageMetadata.get(key)
+
+    # Ensure that the method is in sync with the required metadata
+    # Get all required fields as lowerCamelCase for passing as kwargs
+    requiredFieldsCamel = [(key[0].lower() + key[1:]) for key in
+                      BidsIncremental.REQUIRED_IMAGE_METADATA]
+    dummyValue = 'n/a'
+    metadataDict = {key: dummyValue for key in requiredFieldsCamel}
+    createdDict = BidsIncremental.createImageMetadataDict(**metadataDict)
+
+    for field in BidsIncremental.REQUIRED_IMAGE_METADATA:
+        assert createdDict[field] == dummyValue
+
+
+# Test that internal metadata dictionary is independent from the argument dict
+def testMetadataDictionaryIndependence(sample4DNifti1, imageMetadata):
+    incremental = BidsIncremental(sample4DNifti1, imageMetadata)
+
+    key = 'subject'
+    assert incremental.getMetadataField(key) == imageMetadata[key]
+    old = incremental.getMetadataField(key)
+
+    imageMetadata[key] = 'a brand-new subject'
+    assert incremental.getMetadataField(key) == old
+    assert incremental.getMetadataField(key) != imageMetadata[key]
 
 
 # Test that invalid dataset.json fields are rejected and valid ones are accepted

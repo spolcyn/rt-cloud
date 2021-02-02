@@ -143,8 +143,8 @@ def imageMetadata(dicomImageMetadata):
     Dictionary with all required metadata to construct a BIDS-Incremental, as
     well as extra metadata extracted from the test DICOM image.
     """
-    meta = {'subject': '01', 'task': 'faces', 'suffix': 'bold',  # REQUIRED
-            'session': '01', 'run': 1}  # EXTRACTED
+    meta = {'subject': '01', 'task': 'faces', 'suffix': 'bold', 'datatype':
+            'func', 'session': '01', 'run': 1}
     meta.update(dicomImageMetadata)  # DICOM
     return meta
 

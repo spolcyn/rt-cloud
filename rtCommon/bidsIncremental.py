@@ -36,9 +36,8 @@ logger = logging.getLogger(__name__)
 
 
 class BidsIncremental:
-    # TODO(spolcyn): Rename this to something more useful
     ENTITIES = loadBidsEntities()
-    REQUIRED_IMAGE_METADATA = ["subject", "task", "suffix",
+    REQUIRED_IMAGE_METADATA = ["subject", "task", "suffix", "datatype",
                                "RepetitionTime", "EchoTime"]
 
     """
@@ -192,7 +191,8 @@ class BidsIncremental:
 
     @staticmethod
     def createImageMetadataDict(subject: str, task: str, suffix: str,
-                                repetitionTime: int, echoTime: int):
+                                datatype: str, repetitionTime: int,
+                                echoTime: int):
         """
         Creates an image metadata dictionary for a BIDS-I with all of the
         basic required fields using the correct key names.
@@ -200,7 +200,8 @@ class BidsIncremental:
         Args:
             subject: Subject ID (e.g., '01')
             task: Task ID (e.g., 'story')
-            suffix: Data type (e.g., 'bold')
+            suffix: Imaging method (e.g., 'bold')
+            datatype: Data type (e.g., 'func' or 'anat')
             repetitionTime: TR time, in seconds, used for the imaging run
             echoTime: Echo time, in seconds, used for the imaging run
 
@@ -209,7 +210,8 @@ class BidsIncremental:
 
         """
         return {"subject": subject, "task": task, "suffix": suffix,
-                "RepetitionTime": repetitionTime, "EchoTime": echoTime}
+                'datatype': datatype, "RepetitionTime": repetitionTime,
+                "EchoTime": echoTime}
 
     @classmethod
     def missingImageMetadata(cls, imageMeta: dict) -> list:
