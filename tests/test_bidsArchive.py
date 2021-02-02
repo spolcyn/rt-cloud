@@ -23,7 +23,7 @@ from rtCommon.bidsCommon import (
     symmetricDictDifference,
 )
 
-from rtCommon.errors import MissingMetadataError, StateError, ValidationError
+from rtCommon.errors import MissingMetadataError, StateError
 
 logger = logging.getLogger(__name__)
 
@@ -213,6 +213,7 @@ def testGetMetadata(bidsArchive3D, imageMetadata):
 
     diff = symmetricDictDifference(returnedMeta, imageMetadata, opeq)
     assert diff == {}
+
 
 # Test getting an event file from the archive
 def testGetEvents(validBidsI, imageMetadata, tmpdir):
@@ -422,7 +423,7 @@ def testConflictingNiftiHeaderAppend(bidsArchive3D, sample3DNifti1,
                                      imageMetadata):
     # Modify NIfTI header in critical way (change the datatype)
     sample3DNifti1.header['datatype'] = 32  # 32=complex, should be uint16=512
-    with pytest.raises(ValidationError):
+    with pytest.raises(RuntimeError):
         bidsArchive3D.appendIncremental(BidsIncremental(sample3DNifti1,
                                                         imageMetadata))
 
@@ -431,15 +432,9 @@ def testConflictingNiftiHeaderAppend(bidsArchive3D, sample3DNifti1,
 def testConflictingMetadataAppend(bidsArchive3D, sample3DNifti1, imageMetadata):
     # Modify metadata in critical way (change the subject)
     imageMetadata['ProtocolName'] = 'not the same'
-    with pytest.raises(ValidationError):
-        """
-        logging.info("Archive all files: %s",
-                     json.dumps(bidsArchive3D.dataset.data.get_files(),
-                                sort_keys=True, indent=4, default=str))
-       """
+    with pytest.raises(RuntimeError):
         bidsArchive3D.appendIncremental(BidsIncremental(sample3DNifti1,
                                                         imageMetadata))
-    pass
 
 
 # Test images are correctly appended to an archive with a single 4-D image in it
@@ -574,45 +569,48 @@ def testStripSliceIndexOutOfBounds(bidsArchive3D, bidsArchive4D, imageMetadata,
                                    caplog):
     # Negative case
     outOfBoundsIndex = -1
-    incremental = bidsArchive3D.getIncremental(
-        subject=imageMetadata["subject"],
-        task=imageMetadata["task"],
-        suffix=imageMetadata["suffix"],
-        datatype="func",
-        sliceIndex=-1,
-        session=imageMetadata["session"])
+    errorMsg = fr"Slice index must be >= 0 \(got {outOfBoundsIndex}\)"
+    with pytest.raises(IndexError, match=errorMsg):
+        incremental = bidsArchive3D.getIncremental(
+            subject=imageMetadata["subject"],
+            task=imageMetadata["task"],
+            suffix=imageMetadata["suffix"],
+            datatype="func",
+            sliceIndex=outOfBoundsIndex,
+            session=imageMetadata["session"])
 
-    assert f"Slice index must be >= 0 (got {outOfBoundsIndex})" in caplog.text
-    assert incremental is None
+        assert incremental is None
 
     # 3D case
     outOfBoundsIndex = 1
-    incremental = bidsArchive3D.getIncremental(
-        subject=imageMetadata["subject"],
-        task=imageMetadata["task"],
-        suffix=imageMetadata["suffix"],
-        datatype="func",
-        sliceIndex=outOfBoundsIndex,
-        session=imageMetadata["session"])
+    errorMsg = (f"Matching image was a 3-D NIfTI; {outOfBoundsIndex} too high "
+                r"for a 3-D NIfTI \(must be 0\)")
+    with pytest.raises(IndexError, match=errorMsg):
+        incremental = bidsArchive3D.getIncremental(
+            subject=imageMetadata["subject"],
+            task=imageMetadata["task"],
+            suffix=imageMetadata["suffix"],
+            datatype="func",
+            sliceIndex=outOfBoundsIndex,
+            session=imageMetadata["session"])
 
-    assert f"Matching image was a 3-D NIfTI; time index {outOfBoundsIndex} " \
-           f"too high for a 3-D NIfTI (must be 0)" in caplog.text
-    assert incremental is None
+        assert incremental is None
 
     # 4D case
     outOfBoundsIndex = 4
     archiveLength = 2
-    incremental = bidsArchive4D.getIncremental(
-        subject=imageMetadata["subject"],
-        task=imageMetadata["task"],
-        suffix=imageMetadata["suffix"],
-        datatype="func",
-        sliceIndex=outOfBoundsIndex,
-        session=imageMetadata["session"])
+    errorMsg = (f"Image index {outOfBoundsIndex} too large for NIfTI volume of "
+                f"length {archiveLength}")
+    with pytest.raises(IndexError, match=errorMsg):
+        incremental = bidsArchive4D.getIncremental(
+            subject=imageMetadata["subject"],
+            task=imageMetadata["task"],
+            suffix=imageMetadata["suffix"],
+            datatype="func",
+            sliceIndex=outOfBoundsIndex,
+            session=imageMetadata["session"])
 
-    assert f"Image index {outOfBoundsIndex} too large for NIfTI volume of " \
-           f"length {archiveLength}" in caplog.text
-    assert incremental is None
+        assert incremental is None
 
 
 # Test stripping when files are found, but none match provided parameters

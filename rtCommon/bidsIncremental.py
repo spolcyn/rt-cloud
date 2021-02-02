@@ -325,7 +325,7 @@ class BidsIncremental:
 
     # Getting internal NIfTI data
     def imageData(self) -> np.ndarray:
-        return self._imageDataArray
+        return getNiftiData(self.image)
 
     @property
     def imageHeader(self):

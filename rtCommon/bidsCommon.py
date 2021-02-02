@@ -13,6 +13,7 @@ import re
 from typing import Any, Callable, Tuple
 
 import pydicom
+import nibabel as nib
 import numpy as np
 import yaml
 
@@ -84,7 +85,7 @@ def filterEntities(metadata: dict) -> dict:
     return {key: metadata[key] for key in metadata if key in entities}
 
 
-def getNiftiData(image) -> np.ndarray:
+def getNiftiData(image: nib.Nifti1Image) -> np.ndarray:
     """
     Nibabel exposes a get_fdata() method, but this converts all the data to
     float64. Since our Nifti files are often converted from DICOM's, which store

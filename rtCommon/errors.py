@@ -45,9 +45,11 @@ class MissedMultipleDeadlines(RTError):
     """Server missed two or more deadlines"""
     pass
 
+
 class NotImplementedError(RTError):
     """Functionality is not implemented yet"""
     pass
+
 
 class MissingMetadataError(RTError):
     """Required BIDS metadata missing"""

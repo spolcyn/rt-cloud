@@ -29,7 +29,7 @@ from rtCommon.bidsCommon import (
     getNiftiData,
 )
 from rtCommon.bidsIncremental import BidsIncremental
-from rtCommon.errors import MissingMetadataError, StateError, ValidationError
+from rtCommon.errors import MissingMetadataError, StateError
 
 # Silence future warning
 bc_set_option('extension_initial_dot', True)
@@ -74,10 +74,6 @@ class BidsArchive:
         self.rootPath = os.path.abspath(rootPath)
         # Formatting initialization logic this way enables the creation of an
         # empty BIDS archive that an incremntal can then be appended to
-        # TODO(spolcyn): Decide whether this additional capability is worth the
-        # increased complexity in the code (alternative would be just passing
-        # the exceptions back up, and workflow would become writing the
-        # first incremental to disk, then opening the BidsArchive from that)
         try:
             self.data = BIDSLayout(rootPath)
         except Exception as e:
@@ -256,9 +252,6 @@ class BidsArchive:
         Updates the layout of the dataset so that any new metadata or image
         files are added to the index.
         """
-        # TODO(spolcyn): Find if there's a more efficient way to update the
-        # index that doesn't rely on implementation details of the PyBids (ie,
-        # the SQL DB it uses)
         self.data = BIDSLayout(self.rootPath)
 
     def _addImage(self, img: nib.Nifti1Image, path: str) -> None:
@@ -596,6 +589,8 @@ class BidsArchive:
                 (default: True).
 
         Raises:
+            RuntimeError: If the image to append to in the archive is not either
+                3D or 4D.
             StateError: If the image path within the BIDS-I would result in
                 directory creation and makePath is set to False.
             ValidationError: If the data to append is incompatible with existing
@@ -645,32 +640,36 @@ class BidsArchive:
             entityDict['suffix'] = incremental.suffix
 
             # The one exact match must exist because the path exists
-            archiveImg = self.getImages(**entityDict,
-                                        matchExact=True)[0].get_image()
+            images = self.getImages(**entityDict, matchExact=True)
+            assert len(images) == 1
+            archiveImg = images[0].get_image()
 
             # Validate header match
             if not self._imagesAppendCompatible(incremental.image,
                                                 archiveImg):
-                raise ValidationError("Nifti headers not append compatible")
+                raise RuntimeError("Nifti headers not append compatible")
             if not self._metadataAppendCompatible(incremental.imgMetadata,
                                                   self.getMetadata(imgPath)):
-                raise ValidationError("Image metadata not append compatible")
+                raise RuntimeError("Image metadata not append compatible")
 
             # Build 4-D NIfTI if archive has 3-D, concat to 4-D otherwise
             incrementalData = getNiftiData(incremental.image)
             archiveData = getNiftiData(archiveImg)
 
-            # If archive has something that isn't 3-D or 4-D, not sure what to
-            # do with it
-            # TODO(spolcyn): Handle this case more gracefully, or provide
-            # additional documentation that precludes this from happening
-            assert len(archiveData.shape) == 3 or len(archiveData.shape) == 4
-
-            if len(archiveData.shape) == 3:
+            # RT-Cloud assumes 3D or 4D NIfTI images, other sizes have unknown
+            # interpretations
+            dimensions = len(archiveData.shape)
+            if dimensions == 3:
                 archiveData = np.expand_dims(archiveData, 3)
+            elif dimensions == 4:
+                pass
+            else:
+                raise RuntimeError("Expected image to have 3 or 4 dimensions "
+                                   f"(got {dimensions} dimensions)")
 
-            # TODO(spolcyn): Replace this with the patched version of
-            # concat_images
+            # TODO(spolcyn): Replace this with Nibabel's concat_images function
+            # when the dtype issue with save/load cycle is fixed
+            # https://github.com/nipy/nibabel/issues/986
             newArchiveData = np.concatenate((archiveData, incrementalData),
                                             axis=3)
 
@@ -684,14 +683,15 @@ class BidsArchive:
         # the archive; create new Nifti file within the archive
         elif self.pathExists(dataDirPath) or makePath:
             logger.debug("Image doesn't exist in archive, creating")
-
             self._addImage(incremental.image, imgPath)
             self._addMetadata(incremental.imgMetadata, metadataPath)
 
+        # Archive wasn't empty, specified paths didn't exist, and no permission
+        # given to make the path; append fails.
         else:
-            # TODO(spolcyn): Ensure that there shouldn't be an extra case in
-            # which an exception is thrown
             return False
+
+        return True
 
     @failIfEmpty
     def getIncremental(self, sliceIndex: int = 0, **entities) \
@@ -709,14 +709,17 @@ class BidsArchive:
             its associated metadata.
 
         Raises:
-            NoMatchError: When no images that match the provided entities are
-                found in the archive
-            RuntimeError: When too many images that match the provided entities
-                are found in the archive.
-            ValueError: If the image matching the provided entities has fewer
-                than 3 dimensions or greater than 4.
+            IndexError: If the provided sliceIndex goes beyond the bounds of the
+                image specified in the archive.
             MissingMetadataError: If the archive lacks the required metadata to
                 make a BIDS Incremental out of an image in the archive.
+            NoMatchError: When no images that match the provided entities are
+                found in the archive
+            RuntimeError:
+                1) When too many images that match the provided entities
+                are found in the archive.
+                2) If the image matching the provided entities has fewer
+                than 3 dimensions or greater than 4.
 
         Examples:
             >>> archive = BidsArchive('.')
@@ -729,10 +732,7 @@ class BidsArchive:
             (64, 64, 27, 1)
         """
         if sliceIndex < 0:
-            logger.error(f"Slice index must be >= 0 (got {sliceIndex})")
-            return None
-
-        # Ensure an image extension is in the entities
+            raise IndexError(f"Slice index must be >= 0 (got {sliceIndex})")
 
         candidates = self.getImages(**entities)
 
@@ -751,23 +751,19 @@ class BidsArchive:
         # Process error conditions and slice image if necessary
         if len(image.dataobj.shape) == 3:
             if sliceIndex != 0:
-                # TODO(spolcyn): Change to exception
-                logger.error("Matching image was a 3-D NIfTI; time index %d "
-                             "too high for a 3-D NIfTI (must be 0)", sliceIndex)
-                return None
+                raise IndexError(f"Matching image was a 3-D NIfTI; {sliceIndex}"
+                                 f" too high for a 3-D NIfTI (must be 0)")
         elif len(image.dataobj.shape) == 4:
             slices = nib.four_to_three(image)
 
             if sliceIndex < len(slices):
                 image = slices[sliceIndex]
             else:
-                # TODO(spolcyn): Change to exception
-                logger.error(f"Image index {sliceIndex} too large for NIfTI "
-                             f"volume of length {len(slices)}")
-                return None
+                raise IndexError(f"Image index {sliceIndex} too large for NIfTI"
+                                 f" volume of length {len(slices)}")
         else:
-            raise ValueError("Expected image to have 3 or 4 dimensions (got "
-                             + len(image.dataobj.shape) + " dimensions)")
+            raise RuntimeError("Expected image to have 3 or 4 dimensions (got "
+                               + len(image.dataobj.shape) + " dimensions)")
 
         metadata = self.data.get_metadata(candidate.path, include_entities=True)
         metadata.pop('extension')  # unused by BIDS-I
