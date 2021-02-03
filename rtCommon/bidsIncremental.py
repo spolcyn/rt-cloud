@@ -16,6 +16,7 @@ from bids.layout.writing import build_path as bids_build_path
 import logging
 import nibabel as nib
 import numpy as np
+import pandas as pd
 
 from rtCommon.errors import MissingMetadataError
 from rtCommon.bidsCommon import (
@@ -115,6 +116,9 @@ class BidsIncremental:
 
         # Configure additional required BIDS metadata and files
         self.readme = "Generated BIDS-Incremental Dataset from RT-Cloud"
+
+        eventDefaultHeaders = ['onset', 'duration', 'response_time']
+        self.events = pd.DataFrame(columns=eventDefaultHeaders)
 
         # The BIDS-I version for serialization
         self.version = 1
@@ -463,7 +467,7 @@ class BidsIncremental:
         # sequence, not just to fulfill BIDS validation
         eventsPath = os.path.join(dataDirPath, self.eventsFileName)
         with open(eventsPath, mode='w') as eventsFile:
-            eventsFile.write('onset\tduration\tresponse_time\n')
+            self.events.to_csv(eventsFile, sep='\t')
 
         # Write out dataset description
         descriptionPath = os.path.join(datasetRoot, "dataset_description.json")
