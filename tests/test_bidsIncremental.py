@@ -109,8 +109,8 @@ def testStringOutput(validBidsI):
     keyCount = len(validBidsI._imgMetadata.keys())
     version = validBidsI.version
     assert str(validBidsI) == f"Image shape: {imageShape}; " \
-                              f"# Metadata Keys: {keyCount}; " \
-                              f"Version: {version}"
+                              f"Metadata Key Count: {keyCount}; " \
+                              f"BIDS-I Version: {version}"
 
 
 # Test that equality comparison is as expected

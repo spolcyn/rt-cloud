@@ -648,7 +648,7 @@ class BidsArchive:
             if not self._imagesAppendCompatible(incremental.image,
                                                 archiveImg):
                 raise RuntimeError("Nifti headers not append compatible")
-            if not self._metadataAppendCompatible(incremental.imgMetadata,
+            if not self._metadataAppendCompatible(incremental.imageMetadata,
                                                   self.getMetadata(imgPath)):
                 raise RuntimeError("Image metadata not append compatible")
 
@@ -661,6 +661,8 @@ class BidsArchive:
             dimensions = len(archiveData.shape)
             if dimensions == 3:
                 archiveData = np.expand_dims(archiveData, 3)
+                archiveImg.header['pixdim'][4] = \
+                    incremental.getMetadataField('RepetitionTime')
             elif dimensions == 4:
                 pass
             else:
@@ -684,7 +686,7 @@ class BidsArchive:
         elif self.pathExists(dataDirPath) or makePath:
             logger.debug("Image doesn't exist in archive, creating")
             self._addImage(incremental.image, imgPath)
-            self._addMetadata(incremental.imgMetadata, metadataPath)
+            self._addMetadata(incremental.imageMetadata, metadataPath)
 
         # Archive wasn't empty, specified paths didn't exist, and no permission
         # given to make the path; append fails.

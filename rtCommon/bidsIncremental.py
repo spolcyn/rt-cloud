@@ -53,7 +53,7 @@ class BidsIncremental:
 
         Args:
             image: Nifti image as an NiBabel NiftiImage.
-            imgMetadata: Metadata for image
+            imageMetadata: Metadata for image
             datasetMetadata: Top-level dataset metadata for the BIDS dataset
                 to be placed in a dataset_description.json.
 
@@ -93,7 +93,7 @@ class BidsIncremental:
         # Remove singleton dimensions
         self.image = nib.funcs.squeeze_image(image)
 
-        # Validate dimensions, upgrading if needed
+        # Validate dimensions, upgrading to 4-D if needed
         imageShape = self.imageDimensions
         if len(imageShape) < 3:
             raise ValueError("Image must have at least 3 dimensions")
@@ -103,15 +103,12 @@ class BidsIncremental:
             self.image = self.image.__class__(newData, self.image.affine,
                                               self.image.header)
             # TODO(spolcyn): Fix xyzt units when data is extended from 3D to 4D
+            logger.debug("Image header xyzt units: %s",
+                         self.imageHeader['xyzt_units'])
+            # Ensure time dimension size matches TR length
+            self.imageHeader["pixdim"][4] = \
+                self.getMetadataField("RepetitionTime")
 
-        # Ensure time dimension size matches TR length
-        self.imageHeader["pixdim"][4] = \
-            self.getMetadataField("RepetitionTime")
-
-        logger.debug("Image header xyzt units: %s",
-                     self.imageHeader['xyzt_units'])
-
-        self._imageDataArray = getNiftiData(self.image)
         assert len(self.imageDimensions) == 4
 
         # Configure additional required BIDS metadata and files
@@ -124,10 +121,10 @@ class BidsIncremental:
         self.version = 1
 
     def __str__(self):
-        return "Image shape: {}; # Metadata Keys: {}; Version: {}".format(
-            self.imageDimensions,
-            len(self._imgMetadata.keys()),
-            self.version)
+        return ("Image shape: {}; Metadata Key Count: {}; BIDS-I Version: {}"
+                .format(self.imageDimensions,
+                        len(self._imgMetadata.keys()),
+                        self.version))
 
     def __eq__(self, other):
         def reportDifference(valueName: str, d1: dict, d2: dict,
@@ -342,7 +339,7 @@ class BidsIncremental:
         return self._imgMetadata.get("datatype")
 
     @property
-    def imgMetadata(self):
+    def imageMetadata(self):
         return self._imgMetadata.copy()
 
     @property
@@ -395,7 +392,7 @@ class BidsIncremental:
         if extension == BidsFileExtension.EVENTS:
             entities["suffix"] = "events"
         else:
-            entities["suffix"] = self.imgMetadata["suffix"]
+            entities["suffix"] = self._imgMetadata["suffix"]
 
         return bids_build_path(entities, BIDS_FILE_PATTERN)
 

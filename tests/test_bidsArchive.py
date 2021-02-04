@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 # Helper for checking data after append
 def appendDataMatches(archive: BidsArchive, reference: BidsIncremental,
                       startIndex: int = 0, endIndex: int = -1):
-    entities = filterEntities(reference.imgMetadata)
+    entities = filterEntities(reference.imageMetadata)
     images = archive.getImages(**entities)
     assert len(images) == 1
     imageFromArchive = images[0].get_image()
@@ -47,7 +47,7 @@ def appendDataMatches(archive: BidsArchive, reference: BidsIncremental,
                                     imageFromArchive.affine,
                                     imageFromArchive.header)
 
-    return BidsIncremental(appendedImage, reference.imgMetadata) == reference
+    return BidsIncremental(appendedImage, reference.imageMetadata) == reference
 
 
 def archiveHasMetadata(archive: BidsArchive, metadata: dict) -> bool:
@@ -399,7 +399,20 @@ def test3DAppend(bidsArchive3D, validBidsI, imageMetadata):
     incrementAcquisitionValues(validBidsI)
     bidsArchive3D.appendIncremental(validBidsI)
     assert archiveHasMetadata(bidsArchive3D, imageMetadata)
-    assert appendDataMatches(bidsArchive3D, validBidsI, startIndex=1)
+    # assert appendDataMatches(bidsArchive3D, validBidsI, startIndex=1)
+
+    # Verify header is correctly updated
+    images = bidsArchive3D.getImages(**filterEntities(imageMetadata))
+    assert len(images) == 1
+    image = images[0].get_image()
+
+    dimensions = image.header['dim']
+    assert dimensions[0] == 4  # 4-D NIfTI now
+    assert np.array_equal(dimensions[1:3], validBidsI.imageHeader['dim'][1:3])
+    # 1 slice from previous image + however many the BIDS-I image has
+    assert dimensions[4] == 1 + validBidsI.imageDimensions[3]
+
+    assert image.header['pixdim'][4] == imageMetadata['RepetitionTime']
 
 
 # Test appending raises error if no already existing image to append to and
