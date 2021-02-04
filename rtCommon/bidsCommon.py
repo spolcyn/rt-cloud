@@ -125,6 +125,33 @@ def makeDicomFieldBidsCompatible(field: str) -> str:
     return re.compile('[^a-zA-z]').sub("", field)
 
 
+def change3DHeaderTo4D(image: nib.Nifti1Image, timeLength: int,
+                       repetitionTime: int, timeUnit: str = 'sec') -> None:
+    """
+    Makes necessary changes to the NIfTI header to reflect the increase in
+    the datasize from 3D to 4D
+
+    Args:
+        image:
+        timeLength:
+        repetitionTime:
+        timeUnit:
+
+    """
+    # pixdim, dim, xyzt_units
+    pass
+
+
+def addSecondsToXyztUnits(image: nib.Nifti1Image):
+    """
+    Adds seconds to the xyzt_units field of the image header. Often used when a
+    3-D image is appended to and becomes a 4-D image.
+    """
+    previousUnits = image.header.get_xyzt_units()
+    logger.debug('Units before adding seconds: %s', previousUnits)
+    image.header.set_xyzt_units(xyz=previousUnits[0], t='sec')
+
+
 def adjustTimeUnits(imageMetadata: dict) -> None:
     """
     Validates and converts in-place the units of various time-based metadata,

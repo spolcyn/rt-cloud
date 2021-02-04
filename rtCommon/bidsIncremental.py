@@ -20,11 +20,12 @@ import pandas as pd
 
 from rtCommon.errors import MissingMetadataError
 from rtCommon.bidsCommon import (
-    BidsFileExtension,
-    BIDS_FILE_PATTERN,
     BIDS_DIR_PATH_PATTERN,
+    BIDS_FILE_PATTERN,
+    BidsFileExtension,
     DATASET_DESC_REQ_FIELDS,
     DEFAULT_DATASET_DESC,
+    addSecondsToXyztUnits,
     adjustTimeUnits,
     filterEntities,
     getNiftiData,
@@ -102,11 +103,18 @@ class BidsIncremental:
             newData = np.expand_dims(getNiftiData(self.image), -1)
             self.image = self.image.__class__(newData, self.image.affine,
                                               self.image.header)
-            # TODO(spolcyn): Fix xyzt units when data is extended from 3D to 4D
-            logger.debug("Image header xyzt units: %s",
-                         self.imageHeader['xyzt_units'])
-            # Ensure time dimension size matches TR length
-            self.imageHeader["pixdim"][4] = \
+
+            # When the image dimensions are extended, the header must be updated
+            # 1) xyzt_units must be updated to contain a temporal unit
+            # For BIDS, RepetitionTime must be provided in seconds; thus, we set
+            # xyzt_units to have seconds for the 4th dimension Thus, we add 8,
+            # which sets the right bits for specifying seconds
+            addSecondsToXyztUnits(self.image)
+            logger.debug("xyzt_units set to: %s",
+                         self.image.header.get_xyzt_units())
+
+            # 2) The pixel dimensions must be updated with the time dimension
+            self.image.header["pixdim"][4] = \
                 self.getMetadataField("RepetitionTime")
 
         assert len(self.imageDimensions) == 4

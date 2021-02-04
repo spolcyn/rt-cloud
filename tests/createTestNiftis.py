@@ -7,6 +7,8 @@ import logging
 import nibabel as nib
 import numpy as np
 
+from rtCommon.imageHandling import convertDicomFileToNifti
+from rtCommon.bidsCommon import addSecondsToXyztUnits
 from tests.common import (
     test_dicomPath,
     test_3DNifti1Path,
@@ -14,9 +16,8 @@ from tests.common import (
     test_4DNifti1Path,
     test_4DNifti2Path
 )
-from rtCommon.imageHandling import convertDicomFileToNifti
 
-logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 ALL_TEST_FILE_PATHS = [test_3DNifti1Path, test_3DNifti2Path,
                        test_4DNifti1Path, test_4DNifti2Path]
@@ -25,7 +26,7 @@ ALL_TEST_FILE_PATHS = [test_3DNifti1Path, test_3DNifti2Path,
 def haveAllNiftiTestFiles():
     for path in ALL_TEST_FILE_PATHS:
         if not os.path.exists(path):
-            logging.info("Don't have: %s", path)
+            logger.info("Don't have: %s", path)
             return False
 
 
@@ -36,7 +37,7 @@ def deleteNiftiTestFiles():
     """
     for path in ALL_TEST_FILE_PATHS:
         if os.path.exists(path):
-            logging.info("Removing existing: %s", path)
+            logger.info("Removing existing: %s", path)
             os.remove(path)
 
 
@@ -141,8 +142,10 @@ def createNiftiTestFiles(shouldValidate: bool = True):
     nifti1_4D = concat_images_patched([nifti1_3D, nifti1_3D])
 
     nifti1_4D.header["pixdim"][4] = TR_TIME
-    # TODO(spolcyn): Set this according to DICOM
-    nifti1_4D.header["datatype"] = 512
+    # TODO(spolcyn): Set this according to DICOM datatype
+    nifti1_4D.header["datatype"] = 512  # unsigned short
+    nifti1_4D.header['bitpix'] = 16  # 16 bits for unsigned short
+    addSecondsToXyztUnits(nifti1_4D)
 
     nib.save(nifti1_4D, test_4DNifti1Path)
 
@@ -151,6 +154,7 @@ def createNiftiTestFiles(shouldValidate: bool = True):
     """
     nifti2_4D = nib.concat_images([nifti2_3D, nifti2_3D])
     nifti2_4D.header["pixdim"][4] = TR_TIME
+    addSecondsToXyztUnits(nifti2_4D)
     nib.save(nifti2_4D, test_4DNifti2Path)
 
     if not shouldValidate:
@@ -207,7 +211,7 @@ def createNiftiTestFiles(shouldValidate: bool = True):
                         specialHandlers[key](v1, v2):
                     continue
                 else:
-                    logging.info("--------------------\n"
+                    logger.warning("--------------------\n"
                                  "Difference found!"
                                  f"Key: {key}\nHeader 1: {v1}\nHeader 2: {v2}")
                     return False
@@ -225,7 +229,15 @@ def createNiftiTestFiles(shouldValidate: bool = True):
     def pixdim3Dto4DHandler(v1: np.ndarray, v2: np.ndarray) -> bool:
         return np.array_equal(v1[1:3], v2[1:3])
 
-    handlerMap3Dto4D = {'dim': dim3Dto4DHandler, 'pixdim': pixdim3Dto4DHandler}
+    # Used when xyzt units is different in 4th (time) dimension for a 4D image
+    # vs. 3D which doesn't have one
+    def xyztunits3Dto4DHandler(v1: np.ndarray, v2: np.ndarray) -> bool:
+        # all spatial units (m, mm, um) have codes < 8, % 8 removes any temporal
+        # units
+        return np.array_equal(v1 % 8, v2 % 8)
+
+    handlerMap3Dto4D = {'dim': dim3Dto4DHandler, 'pixdim': pixdim3Dto4DHandler,
+                        'xyzt_units': xyztunits3Dto4DHandler}
 
     """ Actual validation """
 

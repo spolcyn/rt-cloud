@@ -267,7 +267,7 @@ def testNiftiHeaderValidation(sample4DNifti1, sample3DNifti1, sample2DNifti1,
         other4D.header[field] = fieldArray
 
         assert not BidsArchive._imagesAppendCompatible(sample4DNifti1, other4D)
-        assert "Nifti headers don't match on field: " + field in caplog.text
+        assert "NIfTI headers don't match on field: " + field in caplog.text
 
         other4D.header[field] = oldValue
 
@@ -297,7 +297,7 @@ def testNiftiHeaderValidation(sample4DNifti1, sample3DNifti1, sample2DNifti1,
     other4D.header["dim"][1:4] = other4D.header["dim"][1:4] * 2
     assert not BidsArchive._imagesAppendCompatible(sample4DNifti1,
                                                    other4D)
-    assert "Nifti headers not append compatible due to mismatch in dimensions "\
+    assert "NIfTI headers not append compatible due to mismatch in dimensions "\
            "and pixdim fields." in caplog.text
     # Reset
     other4D.header["dim"][1:4] = original4DHeader["dim"][1:4]
@@ -399,20 +399,25 @@ def test3DAppend(bidsArchive3D, validBidsI, imageMetadata):
     incrementAcquisitionValues(validBidsI)
     bidsArchive3D.appendIncremental(validBidsI)
     assert archiveHasMetadata(bidsArchive3D, imageMetadata)
-    # assert appendDataMatches(bidsArchive3D, validBidsI, startIndex=1)
+    assert appendDataMatches(bidsArchive3D, validBidsI, startIndex=1)
 
     # Verify header is correctly updated
     images = bidsArchive3D.getImages(**filterEntities(imageMetadata))
     assert len(images) == 1
     image = images[0].get_image()
 
+    # Dimensions should have increased by size of BIDS-I
     dimensions = image.header['dim']
     assert dimensions[0] == 4  # 4-D NIfTI now
     assert np.array_equal(dimensions[1:3], validBidsI.imageHeader['dim'][1:3])
     # 1 slice from previous image + however many the BIDS-I image has
     assert dimensions[4] == 1 + validBidsI.imageDimensions[3]
 
+    # Time dimension (4th) should now contain the TR length
     assert image.header['pixdim'][4] == imageMetadata['RepetitionTime']
+
+    # Units should now have time, so millimeters and seconds for current setup
+    assert image.header['xyzt_units'] == 10
 
 
 # Test appending raises error if no already existing image to append to and

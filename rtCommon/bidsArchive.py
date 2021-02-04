@@ -26,6 +26,7 @@ import nibabel as nib
 import numpy as np
 
 from rtCommon.bidsCommon import (
+    addSecondsToXyztUnits,
     getNiftiData,
 )
 from rtCommon.bidsIncremental import BidsIncremental
@@ -437,7 +438,7 @@ class BidsArchive:
 
         """
         fieldsToMatch = ["intent_p1", "intent_p2", "intent_p3", "intent_code",
-                         "dim_info", "datatype", "bitpix", "xyzt_units",
+                         "dim_info", "datatype", "bitpix",
                          "slice_duration", "toffset", "scl_slope", "scl_inter",
                          "qform_code", "quatern_b", "quatern_c", "quatern_d",
                          "qoffset_x", "qoffset_y", "qoffset_z",
@@ -452,8 +453,8 @@ class BidsArchive:
 
             # Use slightly more complicated check to properly match nan values
             if not (np.allclose(v1, v2, atol=0.0, equal_nan=True)):
-                logger.debug("Nifti headers don't match on field: %s \
-                             (v1: %s, v2: %s)\n", field, v1, v2)
+                logger.debug("NIfTI headers don't match on field: %s "
+                             "(v1: %s, v2: %s)\n", field, v1, v2)
                 return False
 
         # Two NIfTI headers are append-compatible in 2 cases:
@@ -500,12 +501,44 @@ class BidsArchive:
                 dimensionMatch = False
 
         if not dimensionMatch:
-            logger.debug("Nifti headers not append compatible due to mismatch "
+            logger.debug("NIfTI headers not append compatible due to mismatch "
                          "in dimensions and pixdim fields. "
                          "Dim 1: %s | Dim 2 %s\n"
                          "Pixdim 1: %s | Pixdim 2 %s",
                          dimensions1, dimensions2, pixdim1, pixdim2)
             return False
+
+        # Compare xyzt_units (spatial and temporal dimension units)
+        # Spatial and temporal dimensions should both be the same; however, it's
+        # valid for only one image to have temporal dimensions defined, as long
+        # as spatial is the same for both
+        field = 'xyzt_units'
+        xyztUnits1 = header1[field]
+        xyztUnits2 = header2[field]
+
+        spatialUnits1 = xyztUnits1 % 8
+        spatialUnits2 = xyztUnits2 % 8
+        spatialMatch = np.array_equal(spatialUnits1, spatialUnits2)
+
+        temporalUnits1 = xyztUnits1 - spatialUnits1
+        temporalUnits2 = xyztUnits2 - spatialUnits2
+        temporalMatch = np.array_equal(temporalUnits1, temporalUnits2)
+
+        # Append compatible if both dimensions match
+        if spatialMatch and temporalMatch:
+            pass
+        # Append compatible if spatial dimensions match, temporal dimensions
+        # don't, and at least one temporal dimension is undefined
+        elif (spatialMatch and not temporalMatch and
+              (temporalUnits1 == 0 or temporalUnits2 == 0)):
+            pass
+        # In any other case, not append compatible
+        else:
+            logger.debug(
+                f"NIfTI headers not append compatible due to mismatch in "
+                f"xyzt_units field (spatial match: {spatialMatch}, "
+                f"temporal match: {temporalMatch}. "
+                f"xyzt_units 1: {xyztUnits1} | xyzt_units 2: {xyztUnits2}")
 
         return True
 
@@ -647,7 +680,7 @@ class BidsArchive:
             # Validate header match
             if not self._imagesAppendCompatible(incremental.image,
                                                 archiveImg):
-                raise RuntimeError("Nifti headers not append compatible")
+                raise RuntimeError("NIfTI headers not append compatible")
             if not self._metadataAppendCompatible(incremental.imageMetadata,
                                                   self.getMetadata(imgPath)):
                 raise RuntimeError("Image metadata not append compatible")
@@ -661,8 +694,10 @@ class BidsArchive:
             dimensions = len(archiveData.shape)
             if dimensions == 3:
                 archiveData = np.expand_dims(archiveData, 3)
+                # TODO(spolcyn): Factor out code repeated in BIDS-I constructor
                 archiveImg.header['pixdim'][4] = \
                     incremental.getMetadataField('RepetitionTime')
+                addSecondsToXyztUnits(archiveImg)
             elif dimensions == 4:
                 pass
             else:
