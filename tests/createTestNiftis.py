@@ -8,7 +8,7 @@ import nibabel as nib
 import numpy as np
 
 from rtCommon.imageHandling import convertDicomFileToNifti
-from rtCommon.bidsCommon import addSecondsToXyztUnits
+from rtCommon.bidsCommon import correct3DHeaderTo4D
 from tests.common import (
     test_dicomPath,
     test_3DNifti1Path,
@@ -26,7 +26,7 @@ ALL_TEST_FILE_PATHS = [test_3DNifti1Path, test_3DNifti2Path,
 def haveAllNiftiTestFiles():
     for path in ALL_TEST_FILE_PATHS:
         if not os.path.exists(path):
-            logger.info("Don't have: %s", path)
+            logger.warning("Don't have: %s", path)
             return False
 
 
@@ -141,20 +141,17 @@ def createNiftiTestFiles(shouldValidate: bool = True):
     """
     nifti1_4D = concat_images_patched([nifti1_3D, nifti1_3D])
 
-    nifti1_4D.header["pixdim"][4] = TR_TIME
-    # TODO(spolcyn): Set this according to DICOM datatype
+    # TODO(spolcyn): Set this progamatically according to DICOM datatype
     nifti1_4D.header["datatype"] = 512  # unsigned short
     nifti1_4D.header['bitpix'] = 16  # 16 bits for unsigned short
-    addSecondsToXyztUnits(nifti1_4D)
-
+    correct3DHeaderTo4D(nifti1_4D, repetitionTime=TR_TIME)
     nib.save(nifti1_4D, test_4DNifti1Path)
 
     """
     Create 4D Nifti2 from 3D Nifti2
     """
     nifti2_4D = nib.concat_images([nifti2_3D, nifti2_3D])
-    nifti2_4D.header["pixdim"][4] = TR_TIME
-    addSecondsToXyztUnits(nifti2_4D)
+    correct3DHeaderTo4D(nifti2_4D, repetitionTime=TR_TIME)
     nib.save(nifti2_4D, test_4DNifti2Path)
 
     if not shouldValidate:

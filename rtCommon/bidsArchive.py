@@ -26,7 +26,7 @@ import nibabel as nib
 import numpy as np
 
 from rtCommon.bidsCommon import (
-    addSecondsToXyztUnits,
+    correct3DHeaderTo4D,
     getNiftiData,
 )
 from rtCommon.bidsIncremental import BidsIncremental
@@ -694,13 +694,9 @@ class BidsArchive:
             dimensions = len(archiveData.shape)
             if dimensions == 3:
                 archiveData = np.expand_dims(archiveData, 3)
-                # TODO(spolcyn): Factor out code repeated in BIDS-I constructor
-                archiveImg.header['pixdim'][4] = \
-                    incremental.getMetadataField('RepetitionTime')
-                addSecondsToXyztUnits(archiveImg)
-            elif dimensions == 4:
-                pass
-            else:
+                correct3DHeaderTo4D(archiveImg, incremental.getMetadataField(
+                    "RepetitionTime"))
+            elif dimensions != 4:
                 raise RuntimeError("Expected image to have 3 or 4 dimensions "
                                    f"(got {dimensions} dimensions)")
 

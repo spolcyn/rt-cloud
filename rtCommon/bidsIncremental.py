@@ -25,8 +25,8 @@ from rtCommon.bidsCommon import (
     BidsFileExtension,
     DATASET_DESC_REQ_FIELDS,
     DEFAULT_DATASET_DESC,
-    addSecondsToXyztUnits,
     adjustTimeUnits,
+    correct3DHeaderTo4D,
     filterEntities,
     getNiftiData,
     loadBidsEntities,
@@ -65,11 +65,10 @@ class BidsIncremental:
 
         """ Do basic input validation """
         # IMAGE
-        if image is None or \
-                (type(image) is not nib.Nifti1Image and
-                 type(image) is not nib.Nifti2Image):
-            raise TypeError("Image must be NIBabel Nifti 1 or 2 image, "
-                            "got type %s" % str(type(image)))
+        validTypes = [nib.Nifti1Image, nib.Nifti2Image]
+        if image is None or type(image) not in validTypes:
+            raise TypeError("Image must be Nibabel Nifti1 or Nifti22 (got "
+                            f"{type(image)}")
 
         # DATASET METADATA
         if datasetMetadata is not None:
@@ -103,19 +102,7 @@ class BidsIncremental:
             newData = np.expand_dims(getNiftiData(self.image), -1)
             self.image = self.image.__class__(newData, self.image.affine,
                                               self.image.header)
-
-            # When the image dimensions are extended, the header must be updated
-            # 1) xyzt_units must be updated to contain a temporal unit
-            # For BIDS, RepetitionTime must be provided in seconds; thus, we set
-            # xyzt_units to have seconds for the 4th dimension Thus, we add 8,
-            # which sets the right bits for specifying seconds
-            addSecondsToXyztUnits(self.image)
-            logger.debug("xyzt_units set to: %s",
-                         self.image.header.get_xyzt_units())
-
-            # 2) The pixel dimensions must be updated with the time dimension
-            self.image.header["pixdim"][4] = \
-                self.getMetadataField("RepetitionTime")
+            correct3DHeaderTo4D(self.image, 1)
 
         assert len(self.imageDimensions) == 4
 
@@ -297,6 +284,8 @@ class BidsIncremental:
         """
         if strict:
             self._exceptIfNotBids(field)
+        # TODO(spolcyn): Have this raise a KeyError instead of just returning
+        # None
         return self._imgMetadata.get(field, None)
 
     def setMetadataField(self, field: str, value, strict: bool = False) -> None:

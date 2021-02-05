@@ -125,31 +125,56 @@ def makeDicomFieldBidsCompatible(field: str) -> str:
     return re.compile('[^a-zA-z]').sub("", field)
 
 
-def change3DHeaderTo4D(image: nib.Nifti1Image, timeLength: int,
-                       repetitionTime: int, timeUnit: str = 'sec') -> None:
+# From official nifti1.h
+UNIT_TO_CODE = {'unknown': 0, 'meter': 1, 'mm': 2, 'micron': 3, 'sec': 8,
+                'msec': 16, 'usec': 24, 'hz': 32, 'ppm': 40, 'rads': 48}
+CODE_TO_UNIT = {UNIT_TO_CODE[key]: key for key in UNIT_TO_CODE.keys()}
+
+
+def correct3DHeaderTo4D(image: nib.Nifti1Image, repetitionTime: int,
+                        timeUnitCode: int = 8) -> None:
     """
     Makes necessary changes to the NIfTI header to reflect the increase in
     the datasize from 3D to 4D
 
     Args:
-        image:
-        timeLength:
-        repetitionTime:
-        timeUnit:
-
+        image: NIfTI image to modify header for
+        repetitionTime: Repetition time for the scan that produced the image
+        timeUnitCode: The temporal dimension NIfTI unit code (e.g., millimeters
+            is 2, seconds is 8)
     """
-    # pixdim, dim, xyzt_units
-    pass
+    oldShape = image.header.get_data_shape()
+    dimensions = len(oldShape)
+    if dimensions < 3 or dimensions > 4:
+        raise ValueError(f'Image must be 3-D or 4-D (got {dimensions}-D)')
+
+    # dim - only update if currently 3D (possible given 4D image whose data has
+    # been changed, and dim is correct but pixdim/xyzt_units need correcting)
+    if dimensions == 3:
+        newShape = (*oldShape, 1)
+        logger.debug(f"Shape old: {oldShape} | Shape new: {newShape}")
+        image.header.set_data_shape(newShape)
+
+    # pixdim
+    oldZooms = image.header.get_zooms()
+    if len(oldZooms) == 3:
+        newZooms = (*oldZooms, repetitionTime)
+    elif len(oldZooms) == 4:
+        newZooms = (*oldZooms[0:3], repetitionTime)
+    logger.debug(f"Zooms old: {oldZooms} | Zooms new: {newZooms}")
+    image.header.set_zooms(newZooms)
+
+    # xyzt_units
+    oldUnits = image.header.get_xyzt_units()
+    newUnits = (oldUnits[0], timeUnitCode)
+    image.header.set_xyzt_units(xyz=newUnits[0], t=newUnits[1])
+    logger.debug(f"Units old: {oldUnits} | Units new: {newUnits}")
 
 
-def addSecondsToXyztUnits(image: nib.Nifti1Image):
-    """
-    Adds seconds to the xyzt_units field of the image header. Often used when a
-    3-D image is appended to and becomes a 4-D image.
-    """
-    previousUnits = image.header.get_xyzt_units()
-    logger.debug('Units before adding seconds: %s', previousUnits)
-    image.header.set_xyzt_units(xyz=previousUnits[0], t='sec')
+def addSecondsToXyztUnits(image: nib.Nifti1Image) -> None:
+    oldUnits = image.header.get_xyzt_units()
+    image.header.set_xyzt_units(xyz=oldUnits[0], t=8)
+    logger.debug("Units before adding seconds: %s", oldUnits)
 
 
 def adjustTimeUnits(imageMetadata: dict) -> None:

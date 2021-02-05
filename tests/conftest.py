@@ -46,7 +46,7 @@ RECREATE_TEST_NIFTIS_KEY = "recreateTestNiftis"
 def pytest_addoption(parser):
     # Enable forced re-creation of NIfTI test files
     parser.addoption("--recreate-test-niftis", action="store_true",
-                     dest=RECREATE_TEST_NIFTIS_KEY)
+                     dest=RECREATE_TEST_NIFTIS_KEY, default=False)
 
 
 def pytest_configure(config) -> None:
