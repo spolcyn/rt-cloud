@@ -20,7 +20,7 @@ from rtCommon.bidsCommon import (
     BIDS_FILE_PATTERN,
     metadataFromProtocolName,
 )
-from rtCommon.errors import MissingMetadataError, ValidationError
+from rtCommon.errors import MissingMetadataError
 
 logger = logging.getLogger(__name__)
 
@@ -149,14 +149,13 @@ def testImageMetadataDictCreation(imageMetadata):
         echoTime=imageMetadata["EchoTime"],
         datatype='func')
 
-
     for key in createdDict.keys():
         assert createdDict.get(key) == imageMetadata.get(key)
 
     # Ensure that the method is in sync with the required metadata
     # Get all required fields as lowerCamelCase for passing as kwargs
     requiredFieldsCamel = [(key[0].lower() + key[1:]) for key in
-                      BidsIncremental.REQUIRED_IMAGE_METADATA]
+                           BidsIncremental.REQUIRED_IMAGE_METADATA]
     dummyValue = 'n/a'
     metadataDict = {key: dummyValue for key in requiredFieldsCamel}
     createdDict = BidsIncremental.createImageMetadataDict(**metadataDict)

@@ -39,30 +39,45 @@ logger = logging.getLogger(__name__)
 
 class BidsIncremental:
     ENTITIES = loadBidsEntities()
-    REQUIRED_IMAGE_METADATA = ["subject", "task", "suffix", "datatype",
-                               "RepetitionTime", "EchoTime"]
+    REQUIRED_IMAGE_METADATA = ['subject', 'task', 'suffix', 'datatype',
+                               'RepetitionTime', 'EchoTime']
 
     """
     BIDS Incremental data format suitable for streaming BIDS Archives
     """
-    def __init__(self,
-                 image: nib.Nifti1Image,
-                 imageMetadata: dict,
+    def __init__(self, image: nib.Nifti1Image, imageMetadata: dict,
                  datasetMetadata: dict = None):
         """
         Initializes a BIDS Incremental object with provided image and metadata.
 
         Args:
             image: Nifti image as an NiBabel NiftiImage.
-            imageMetadata: Metadata for image
+            imageMetadata: Metadata for image, which must include all variables
+                in BidsIncremental.REQUIRED_IMAGE_METADATA.
             datasetMetadata: Top-level dataset metadata for the BIDS dataset
-                to be placed in a dataset_description.json.
+                to be placed in a dataset_description.json. Defaults to None and
+                a default description is used.
 
         Raises:
             MissingMetadataError: If any required metadata is missing.
+            TypeError: If the image is not an Nibabel Nifti1Image or
+                Nifti2Image.
 
+        Examples:
+            >>> import nibabel as nib
+            >>> imageMetadata = {'subject': '01', 'task': 'test',
+                                 'suffix': 'bold', 'datatype': 'func',
+                                 'RepetitionTime': 1.5, 'EchoTime': 1}
+            >>> image = nib.load('/tmp/testfile.nii')
+            >>> datasetMetadata = {'Name': 'Example Dataset',
+                                   'BIDSVersion': '1.5.1',
+                                   'Authors': 'The RT-Cloud Authors'}
+            >>> incremental = BidsIncremental(image, imageMetadata,
+                datasetMetadata)
+            >>> print(incremental)
+            "Image shape: (64, 64, 27, 1); Metadata Key Count: 6; BIDS-I
+            Version: 1"
         """
-
         """ Do basic input validation """
         # IMAGE
         validTypes = [nib.Nifti1Image, nib.Nifti2Image]
@@ -78,10 +93,10 @@ class BidsIncremental:
                 raise MissingMetadataError(
                     f"Dataset description needs: {str(missingFields)}")
 
-        """ Store image metadata """
-        self._preprocessAndSetMetadata(imageMetadata)
-        self._assertHaveRequiredMetadata()
-        self._postprocessMetadata()
+        """ Process, validate, and store image metadata """
+        imageMetadata = self._preprocessMetadata(imageMetadata)
+        self._exceptIfMissingMetadata(imageMetadata)
+        self._imgMetadata = self._postprocessMetadata(imageMetadata)
 
         """ Store dataset metadata """
         if datasetMetadata is None:
@@ -93,12 +108,10 @@ class BidsIncremental:
         # Remove singleton dimensions
         self.image = nib.funcs.squeeze_image(image)
 
-        # Validate dimensions, upgrading to 4-D if needed
         imageShape = self.imageDimensions
         if len(imageShape) < 3:
             raise ValueError("Image must have at least 3 dimensions")
         elif len(imageShape) == 3:
-            # Add one singleton dimension to make image 4-D
             newData = np.expand_dims(getNiftiData(self.image), -1)
             self.image = self.image.__class__(newData, self.image.affine,
                                               self.image.header)
@@ -106,13 +119,14 @@ class BidsIncremental:
 
         assert len(self.imageDimensions) == 4
 
-        # Configure additional required BIDS metadata and files
+        # Configure README
         self.readme = "Generated BIDS-Incremental Dataset from RT-Cloud"
 
+        # Configure events file
         eventDefaultHeaders = ['onset', 'duration', 'response_time']
         self.events = pd.DataFrame(columns=eventDefaultHeaders)
 
-        # The BIDS-I version for serialization
+        # BIDS-I version for serialization
         self.version = 1
 
     def __str__(self):
@@ -161,51 +175,87 @@ class BidsIncremental:
 
         return True
 
-    def _preprocessAndSetMetadata(self, imageMetadata: dict) -> None:
+    def _preprocessMetadata(self, imageMetadata: dict) -> dict:
         """
         Pre-process metadata to extract any additonal metadata that might be
-        embedded in the provided metadata, like ProtocolName.
+        embedded in the provided metadata, like ProtocolName, and ensure that
+        certain metadata values (e.g., RepetitionTime, EchoTime) are within
+        BIDS-specified ranges.
+
+        Args:
+            imageMetadata: Metadata dictionary provided to BIDS incremental to
+                search for additional, embedded metadata
+
+        Returns:
+            Original dictionary with all embedded metadata added explicitly and
+                values within BIDS-specified ranges.
         """
         # Process ProtocolName
         protocolName = imageMetadata.get("ProtocolName", None)
-        self._imgMetadata = metadataFromProtocolName(protocolName)
+        parsedMetadata = metadataFromProtocolName(protocolName)
         logger.debug(f"From ProtocolName '{protocolName}', got: "
-                     f"{self._imgMetadata}")
+                     f"{parsedMetadata}")
 
         # TODO(spolcyn): Attempt to extract the repetition time directly from
         # the NIfTI header when possible
 
-        # TODO(spolcyn): Correctly extract slice timing from the metadata
-        self._imgMetadata["SliceTiming"] = list(np.linspace(0.0, 1.5, 27))
+        # TODO(spolcyn): Correctly handle timing such that any one one of these
+        # 5 timing methods work from a user perspective (currently,
+        # RepetitionTime is required)
+        """
+         Timing may be represented one of 5 ways, with 5 relevant variables:
+         Variables:
+         RepetitionTime (RT), SliceTiming (ST), AcquisitionDuration (AD),
+         DelayTime (DT), and VolumeTiming (VT)
+         A) RT AND NOT AD AND NOT VT
+         B) NOT RT AND ST AND NOT DT AND VT
+         C) NOT RT AND AD AND NOT DT AND VT
+         D) RT AND ST AND NOT AD AND NOT VT
+         E) RT AND NOT AD AND DT AND NOT VT
+         https://bids-specification.readthedocs.io/en/latest/04-modality-specific-files/01-magnetic-resonance-imaging-data.html#required-fields
+        """
 
-        # TODO(spolcyn): Support volume timing and associated fields
+        parsedMetadata.update(imageMetadata)
+        adjustTimeUnits(parsedMetadata)
 
-        self._imgMetadata.update(imageMetadata)
-        adjustTimeUnits(self._imgMetadata)
+        return parsedMetadata
 
-    def _postprocessMetadata(self) -> None:
+    def _exceptIfMissingMetadata(self, imageMetadata: dict) -> None:
+        """
+        Ensure that all required metadata is present.
+
+        Args:
+            imageMetadata: Metadata dictionary to check for missing metadata
+
+        Raises:
+            MissingMetadataError: If not all required metadata is present.
+        """
+        missingImageMetadata = self.findMissingImageMetadata(imageMetadata)
+        if missingImageMetadata != []:
+            raise MissingMetadataError(f"Image metadata missing required "
+                                       f"fields: {missingImageMetadata}")
+
+    def _postprocessMetadata(self, imageMetadata: dict) -> dict:
         """
         Post-process metadata once all required fields are given to create
         derived fields (e.g., TaskName from task) and set data types to expected
         types (e.g., set run to an integer).
+
+        Args:
+            imageMetadata: Metadata dictionary to post-process.
+
+        Returns:
+            Metadata dictionary with derived fields set.
         """
         # Run should be an integer
-        if self._imgMetadata.get("run", None) is not None:
-            self._imgMetadata["run"] = int(self._imgMetadata["run"])
+        if imageMetadata.get("run", None) is not None:
+            imageMetadata["run"] = int(imageMetadata["run"])
 
         # TaskName is required BIDS metadata that can be derived from the
         # required field, 'task'
-        self._imgMetadata["TaskName"] = self._imgMetadata["task"]
+        imageMetadata["TaskName"] = imageMetadata["task"]
 
-    def _assertHaveRequiredMetadata(self) -> None:
-        """
-        Ensure that all required metadata is present, raising an exception with
-        information on what's missing if not all is present.
-        """
-        missingImageMetadata = self.missingImageMetadata(self._imgMetadata)
-        if missingImageMetadata != []:
-            raise MissingMetadataError(f"Image metadata missing required "
-                                       f"fields: {missingImageMetadata}")
+        return imageMetadata
 
     @staticmethod
     def createImageMetadataDict(subject: str, task: str, suffix: str,
@@ -232,7 +282,23 @@ class BidsIncremental:
                 "EchoTime": echoTime}
 
     @classmethod
-    def missingImageMetadata(cls, imageMeta: dict) -> list:
+    def findMissingImageMetadata(cls, imageMeta: dict) -> list:
+        """
+        Creates a list of all required metadata fields that the argument
+        dictionary is missing.
+
+        Args:
+            imageMeta: Metadata dictionary to check for missing fields
+
+        Returns:
+            List of required fields missing in the provided dictionary.
+
+        Examples:
+            >>> meta = {'subject': '01', 'task': 'test', 'suffix': 'bold',
+                        'datatype': 'func'}
+            >>> BidsIncremental.findMissingImageMetadata(meta)
+            ['RepetitionTime', 'EchoTime']
+        """
         return [f for f in cls.REQUIRED_IMAGE_METADATA if f not in imageMeta]
 
     @classmethod
@@ -248,8 +314,13 @@ class BidsIncremental:
             True if all required fields are present in the dictionary, False
             otherwise.
 
+        Examples:
+            >>> meta = {'subject': '01', 'task': 'test', 'suffix': 'bold',
+                        'datatype': 'func'}
+            >>> BidsIncremental.isCompleteImageMetadata(meta)
+            False
         """
-        return len(cls.missingImageMetadata(imageMeta)) == 0
+        return len(cls.findMissingImageMetadata(imageMeta)) == 0
 
     def _exceptIfNotBids(self, entityName: str):
         """ Raise an exception if the argument is not a valid BIDS entity """
@@ -273,8 +344,6 @@ class BidsIncremental:
             ValueError if 'strict' is True and 'field' is not a BIDS entity.
 
         Examples:
-            >>> incremental.getMetadataField('run')
-            1
             >>> incremental.getMetadataField('task')
             'faces'
             >>> incremental.getMetadataField('RepetitionTime')

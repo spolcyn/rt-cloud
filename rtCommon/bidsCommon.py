@@ -17,8 +17,6 @@ import nibabel as nib
 import numpy as np
 import yaml
 
-from rtCommon.errors import ValidationError
-
 logger = logging.getLogger(__name__)
 
 # Version of the standard to be compatible with
@@ -113,16 +111,25 @@ def isJsonPath(path: str) -> bool:
     return ext == '.json'
 
 
-@functools.lru_cache(maxsize=128)
-def makeDicomFieldBidsCompatible(field: str) -> str:
+def makeDicomFieldBidsCompatible(dicomField: str) -> str:
     """
-    Remove characters to make field a BIDS-compatible
-    (CamelCase alphanumeric) metadata field.
+    Remove non-alphanumeric characters to make a DICOM field name
+    BIDS-compatible (CamelCase alphanumeric) metadata field.  Note: Multi-word
+    keys like 'Frame of Reference UID' become 'FrameofReferenceUID', which might
+    be different than the expected behavior
 
-    NOTE: Keys like 'Frame of Reference UID' become 'FrameofReferenceUID', which
-    might be different than the expected behavior
+    Args:
+        dicomField: Name of the DICOM field to convert to BIDS format
+
+    Returns:
+        DICOM field name in BIDS-compatible format.
+
+    Examples:
+        >>> field = "Repetition Time"
+        >>> makeDicomFieldBidsCompatible(field)
+        'Repetition Time'
     """
-    return re.compile('[^a-zA-z]').sub("", field)
+    return re.compile('[^a-zA-z]').sub("", dicomField)
 
 
 # From official nifti1.h
@@ -134,14 +141,14 @@ CODE_TO_UNIT = {UNIT_TO_CODE[key]: key for key in UNIT_TO_CODE.keys()}
 def correct3DHeaderTo4D(image: nib.Nifti1Image, repetitionTime: int,
                         timeUnitCode: int = 8) -> None:
     """
-    Makes necessary changes to the NIfTI header to reflect the increase in
-    the datasize from 3D to 4D
+    Makes necessary changes to the NIfTI header to reflect the increase in its
+    corresponding image's data shape from 3D to 4D.
 
     Args:
         image: NIfTI image to modify header for
         repetitionTime: Repetition time for the scan that produced the image
         timeUnitCode: The temporal dimension NIfTI unit code (e.g., millimeters
-            is 2, seconds is 8)
+            is 2, seconds is 8). Defaults to seconds.
     """
     oldShape = image.header.get_data_shape()
     dimensions = len(oldShape)
@@ -169,12 +176,6 @@ def correct3DHeaderTo4D(image: nib.Nifti1Image, repetitionTime: int,
     newUnits = (oldUnits[0], timeUnitCode)
     image.header.set_xyzt_units(xyz=newUnits[0], t=newUnits[1])
     logger.debug(f"Units old: {oldUnits} | Units new: {newUnits}")
-
-
-def addSecondsToXyztUnits(image: nib.Nifti1Image) -> None:
-    oldUnits = image.header.get_xyzt_units()
-    image.header.set_xyzt_units(xyz=oldUnits[0], t=8)
-    logger.debug("Units before adding seconds: %s", oldUnits)
 
 
 def adjustTimeUnits(imageMetadata: dict) -> None:
@@ -233,21 +234,27 @@ def metadataFromProtocolName(protocolName: str) -> dict:
 
 def getDicomMetadata(dicomImg: pydicom.dataset.Dataset) -> Tuple[dict, dict]:
     """
-    Returns the public and private metadata from the provided DICOM image.
+    Returns the public (even-numbered tags) and private (odd-numbered tags)
+    metadata from the provided DICOM image.
 
     Args:
-        dicomImg: A pydicom object to read metadata from.
+        dicomImg: A Pydicom object to read metadata from.
+
     Returns:
         Tuple of 2 dictionaries, the first containing the public metadata from
-        the image and the second containing the private metadata.
+            the image and the second containing the private metadata.
+
+    Raises:
+        TypeError: If the image provided is not a pydicom.dataset.Dataset object
+            (e.g., if the image were the raw DICOM data).
     """
     if not isinstance(dicomImg, pydicom.dataset.Dataset):
-        raise ValidationError("Expected pydicom.dataset.Dataset as argument")
+        raise TypeError("Expected pydicom.dataset.Dataset as argument")
 
     publicMeta = {}
     privateMeta = {}
 
-    ignoredTags = ['Pixel Data']
+    ignoredTags = ['Pixel Data']  # the image's raw data is not metadata
 
     for elem in dicomImg:
         if elem.name in ignoredTags:

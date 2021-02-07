@@ -12,9 +12,6 @@ from rtCommon.bidsCommon import (
     loadBidsEntities,
     metadataFromProtocolName,
 )
-from rtCommon.errors import (
-    ValidationError,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +63,7 @@ def testTimeUnitAdjustment():
 # Test metadata is correctly extracted from a DICOM to public and private
 # dictionaries by ensuring a sample of public keys have the right value
 def testMetadataExtraction(dicomImage, dicomMetadataSample):
-    with pytest.raises(ValidationError):
+    with pytest.raises(TypeError):
         getDicomMetadata("this isn't a pydicom dataset")
 
     # Test a sampling of field names and values extracted by hand
