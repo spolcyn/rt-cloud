@@ -533,8 +533,6 @@ class BidsIncremental:
                                self._imgMetadata if key not in self.ENTITIES}
             json.dump(metadataToWrite, metadataFile, sort_keys=True, indent=4)
 
-        # TODO(spolcyn): Make events file correspond correctly to the imaging
-        # sequence, not just to fulfill BIDS validation
         with open(eventsPath, mode='w') as eventsFile:
             self.events.to_csv(eventsFile, sep='\t')
 
