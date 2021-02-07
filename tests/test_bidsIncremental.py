@@ -199,7 +199,8 @@ def testDatasetMetadata(sample4DNifti1, imageMetadata):
 def testMetadataOutput(validBidsI, imageMetadata):
     with pytest.raises(ValueError):
         validBidsI.getMetadataField("InvalidEntityName", strict=True)
-    assert validBidsI.getMetadataField("InvalidEntityName") is None
+    with pytest.raises(KeyError):
+        validBidsI.getMetadataField("InvalidEntityName")
 
     # Data type - always 'func' currently
     assert validBidsI.datatype == "func"
@@ -223,9 +224,9 @@ def testSetMetadata(validBidsI):
 
     # None field is invalid
     with pytest.raises(ValueError):
-        validBidsI.setMetadataField(None, None)
+        validBidsI.setMetadataField(None, "test")
 
-    entityName = "acquisition"
+    entityName = "subject"
     newValue = "newValue"
     originalValue = validBidsI.getMetadataField(entityName)
 
@@ -243,14 +244,15 @@ def testRemoveMetadata(validBidsI):
         validBidsI.removeMetadataField("nonentity", strict=True)
 
     # Fail for entities that are required to be in the dictionary
-    with pytest.raises(ValueError):
+    with pytest.raises(RuntimeError):
         validBidsI.removeMetadataField("subject")
 
-    entityName = "acquisition"
+    entityName = "ProtocolName"
     originalValue = validBidsI.getMetadataField(entityName)
 
     validBidsI.removeMetadataField(entityName)
-    assert validBidsI.getMetadataField(entityName) is None
+    with pytest.raises(KeyError):
+        validBidsI.getMetadataField(entityName) is None
 
     validBidsI.setMetadataField(entityName, originalValue)
     assert validBidsI.getMetadataField(entityName) == originalValue
@@ -260,7 +262,7 @@ def testRemoveMetadata(validBidsI):
 # return the correct values
 def testQueryNifti(validBidsI):
     # Image data
-    queriedData = validBidsI.imageData()
+    queriedData = validBidsI.imageData
     exactData = getNiftiData(validBidsI.image)
     assert np.array_equal(queriedData, exactData), "{} elements not equal" \
         .format(np.sum(np.where(queriedData != exactData)))

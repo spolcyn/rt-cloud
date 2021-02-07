@@ -165,8 +165,8 @@ class BidsIncremental:
                              other.datasetMetadata)
             return False
 
-        if not np.array_equal(self.imageData(), other.imageData()):
-            differences = self.imageData() != other.imageData()
+        if not np.array_equal(self.imageData, other.imageData):
+            differences = self.imageData != other.imageData
             logger.debug("Image data didn't match")
             logger.debug("Difference count: %d (%f%%)",
                          np.sum(differences),
@@ -322,26 +322,28 @@ class BidsIncremental:
         """
         return len(cls.findMissingImageMetadata(imageMeta)) == 0
 
-    def _exceptIfNotBids(self, entityName: str):
-        """ Raise an exception if the argument is not a valid BIDS entity """
+    def _exceptIfNotBids(self, entityName: str) -> None:
+        """
+        Raise an exception if the argument is not a valid BIDS entity
+        """
         if self.ENTITIES.get(entityName) is None:
             raise ValueError(f"{entityName} is not a valid BIDS entity name")
 
-    # TODO(spolcyn): Add specific getters for commonly used things, like getRun,
-    # getSubject, getTask
-    def getMetadataField(self, field: str, strict: bool = False) -> str:
+    def getMetadataField(self, field: str, strict: bool = False) -> Any:
         """
         Get value for the field in the incremental's metadata, if it exists.
 
         Args:
             field: Metadata field to retrieve a value for.
-            strict: Only allow getting official BIDS entity fields.
+            strict: Only allow getting fields that are defined as BIDS entities
+                in the standard.
 
         Returns:
             Entity's value, or None if the entity isn't present in the metadata.
 
         Raises:
-            ValueError if 'strict' is True and 'field' is not a BIDS entity.
+            ValueError: If 'strict' is True and 'field' is not a BIDS entity.
+            KeyError: If the field is not present in the Incremental's metadata
 
         Examples:
             >>> incremental.getMetadataField('task')
@@ -353,21 +355,23 @@ class BidsIncremental:
         """
         if strict:
             self._exceptIfNotBids(field)
-        # TODO(spolcyn): Have this raise a KeyError instead of just returning
-        # None
-        return self._imgMetadata.get(field, None)
+        try:
+            return self._imgMetadata[field]
+        except KeyError:
+            raise KeyError(f"'{field}' is not in the Incremental's metadata")
 
     def setMetadataField(self, field: str, value, strict: bool = False) -> None:
         """
-        Set metadata field to provided value.
+        Set metadata field to provided value in Incremental's metadata.
 
         Args:
             field: Metadata field to set value for.
             value: Value to set for the provided entity.
-            strict: Only allow setting of official BIDS entity fields.
+            strict: Only allow setting fields that are defined as BIDS entities
+                in the standard.
 
         Raises:
-            ValueError if 'strict' is True and 'field' is not a BIDS entity.
+            ValueError: If 'strict' is True and 'field' is not a BIDS entity.
         """
         if strict:
             self._exceptIfNotBids(field)
@@ -378,53 +382,53 @@ class BidsIncremental:
 
     def removeMetadataField(self, field: str, strict: bool = False) -> None:
         """
-        Remove a piece of metadata.
+        Remove a piece of metadata from the incremental's metadata.
 
         Args:
             field: BIDS entity name to retrieve a value for.
-            strict: Only allow remove of official BIDS entity fields.
+            strict: Only allow removing fields that are defined as BIDS entities
+                in the standard.
 
         Raises:
-            ValueError if 'strict' is True and 'field' is not a BIDS entity.
+            ValueError: If 'strict' is True and 'field' is not a BIDS entity.
+            RuntimeError: If the field to be removed is required by the
+                Incremental.
         """
         if field in self.REQUIRED_IMAGE_METADATA:
-            raise ValueError(f"\"{field}\" is required and cannot be removed")
-
+            raise RuntimeError(f"'{field}' is required and cannot be removed")
         if strict:
             self._exceptIfNotBids(field)
         self._imgMetadata.pop(field, None)
-
-    @property
-    def suffix(self) -> str:
-        return self._imgMetadata.get("suffix")
-
-    # Additional methods to access internal BIDS-I data
-    @property
-    def datatype(self) -> str:
-        """ func or anat """
-        return self._imgMetadata.get("datatype")
 
     @property
     def imageMetadata(self):
         return self._imgMetadata.copy()
 
     @property
+    def suffix(self) -> str:
+        return self._imgMetadata.get("suffix")
+
+    @property
+    def datatype(self) -> str:
+        """ func or anat """
+        return self._imgMetadata.get("datatype")
+
+    @property
     def entities(self) -> dict:
-        """ Return new dictionary with the BIDS entities associated with this
-        BIDS incremental """
+        # Metadata dictionary filtered down to just BIDS entities
         return filterEntities(self._imgMetadata)
 
-    # Getting internal NIfTI data
-    def imageData(self) -> np.ndarray:
-        return getNiftiData(self.image)
+    @property
+    def imageDimensions(self) -> tuple:
+        return self.imageHeader.get_data_shape()
 
     @property
     def imageHeader(self):
         return self.image.header
 
     @property
-    def imageDimensions(self) -> tuple:
-        return self.imageHeader.get_data_shape()
+    def imageData(self) -> np.ndarray:
+        return getNiftiData(self.image)
 
     """
     BEGIN BIDS-I ARCHIVE EMULTATION API
@@ -487,6 +491,10 @@ class BidsIncremental:
         return os.path.join(self.dataDirPath, self.metadataFileName)
 
     @property
+    def eventsFilePath(self) -> str:
+        return os.path.join(self.dataDirPath, self.eventsFileName)
+
+    @property
     def dataDirPath(self) -> str:
         """
         Path to where this incremental's data would be in a BIDS archive,
@@ -514,21 +522,19 @@ class BidsIncremental:
         dataDirPath = os.path.join(datasetRoot, self.dataDirPath)
         imagePath = os.path.join(dataDirPath, self.imageFileName)
         metadataPath = os.path.join(dataDirPath, self.metadataFileName)
+        eventsPath = os.path.join(dataDirPath, self.eventsFileName)
 
         os.makedirs(dataDirPath, exist_ok=True)
         nib.save(self.image, imagePath)
 
         # Write out image metadata
         with open(metadataPath, mode='w') as metadataFile:
-            # TODO(spolcyn): Don't write out entities like 'subject', "task",
-            # and "run", as they're included in the filename
             metadataToWrite = {key: self._imgMetadata[key] for key in
                                self._imgMetadata if key not in self.ENTITIES}
             json.dump(metadataToWrite, metadataFile, sort_keys=True, indent=4)
 
         # TODO(spolcyn): Make events file correspond correctly to the imaging
         # sequence, not just to fulfill BIDS validation
-        eventsPath = os.path.join(dataDirPath, self.eventsFileName)
         with open(eventsPath, mode='w') as eventsFile:
             self.events.to_csv(eventsFile, sep='\t')
 
