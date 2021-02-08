@@ -314,7 +314,7 @@ def testArchivePathConstruction(validBidsI, imageMetadata):
 def testDiskOutput(validBidsI):
     # Write the archive
     datasetRoot = os.path.join(tempfile.gettempdir(), "bids-pytest-dataset")
-    validBidsI.writeToArchive(datasetRoot)
+    validBidsI.writeToDisk(datasetRoot)
 
     # Validate the BIDS-compliance of each path (relative to dataset root) of
     # every file in the archive

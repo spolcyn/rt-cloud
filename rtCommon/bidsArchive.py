@@ -660,7 +660,7 @@ class BidsArchive:
         # the archive; create new Nifti file within the archive
         # 2.3) Neither image nor path is valid for provided archive; fail append
         if self.isEmpty() and makePath:
-            incremental.writeToArchive(self.rootPath)
+            incremental.writeToDisk(self.rootPath)
             self._updateLayout()
 
         elif self.pathExists(imgPath):

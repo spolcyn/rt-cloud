@@ -335,8 +335,10 @@ class BidsIncremental:
 
         Args:
             field: Metadata field to retrieve a value for.
+            default: Default value to return if field is not present.
             strict: Only allow getting fields that are defined as BIDS entities
                 in the standard.
+
 
         Returns:
             Entity's value, or None if the entity isn't present in the metadata.
@@ -344,6 +346,7 @@ class BidsIncremental:
         Raises:
             ValueError: If 'strict' is True and 'field' is not a BIDS entity.
             KeyError: If the field is not present in the Incremental's metadata
+                and not default value is provided.
 
         Examples:
             >>> incremental.getMetadataField('task')
@@ -355,12 +358,14 @@ class BidsIncremental:
         """
         if strict:
             self._exceptIfNotBids(field)
+
         try:
             return self._imgMetadata[field]
         except KeyError:
             raise KeyError(f"'{field}' is not in the Incremental's metadata")
 
-    def setMetadataField(self, field: str, value, strict: bool = False) -> None:
+    def setMetadataField(self, field: str, value: Any,
+                         strict: bool = False) -> None:
         """
         Set metadata field to provided value in Incremental's metadata.
 
@@ -506,11 +511,10 @@ class BidsIncremental:
         Examples:
             >>> print(bidsi.dataDirPath)
             sub-01/ses-2011/anat
-
         """
         return bids_build_path(self._imgMetadata, BIDS_DIR_PATH_PATTERN)
 
-    def writeToArchive(self, datasetRoot: str):
+    def writeToDisk(self, datasetRoot: str) -> None:
         """
         Writes the incremental's data to a directory on disk. NOTE: The
         directory is assumed to be empty, and no checks are made for data that
@@ -518,8 +522,20 @@ class BidsIncremental:
 
         Args:
             datasetRoot: Path to the root of the BIDS archive to be written to.
+
+        Examples:
+            >>> from bidsArchive import BidsArchive
+            >>> incremental = BidsIncremental(image, metadata)
+            >>> root = '/tmp/emptyDirectory'
+            >>> incremental.writeToDisk(root)
+            >>> archive = BidsArchive(root)
+            >>> print(archive)
+            Root: /tmp/emptyDirectory | Subjects: 1 | Sessions: 1 | Runs: 1
         """
         dataDirPath = os.path.join(datasetRoot, self.dataDirPath)
+        descriptionPath = os.path.join(datasetRoot, "dataset_description.json")
+        readmePath = os.path.join(datasetRoot, "README")
+
         imagePath = os.path.join(dataDirPath, self.imageFileName)
         metadataPath = os.path.join(dataDirPath, self.metadataFileName)
         eventsPath = os.path.join(dataDirPath, self.eventsFileName)
@@ -537,12 +553,11 @@ class BidsIncremental:
             self.events.to_csv(eventsFile, sep='\t')
 
         # Write out dataset description
-        descriptionPath = os.path.join(datasetRoot, "dataset_description.json")
         with open(descriptionPath, mode='w') as description:
             json.dump(self.datasetMetadata, description, indent=4)
 
         # Write out readme
-        with open(os.path.join(datasetRoot, "README"), mode='w') as readme:
+        with open(readmePath, mode='w') as readme:
             readme.write(self.readme)
 
     """ END BIDS-I ARCHIVE EMULTATION API """
