@@ -10,7 +10,7 @@ import json
 import logging
 import os
 import re
-from typing import List
+from typing import List, Tuple
 
 from bids.config import set_option as bc_set_option
 from bids.exceptions import (
@@ -214,7 +214,7 @@ class BidsArchive:
         results = [r for r in results if type(r) is BIDSImageFile]
 
         if len(results) == 0:
-            logger.error(f"No images have all provided entities: {entities}")
+            logger.debug(f"Found no images with all entities: {entities}")
             return []
         elif matchExact:
             for result in results:
@@ -225,7 +225,7 @@ class BidsArchive:
                 if result_entities == entities:
                     return [result]
 
-            logger.error(f"No images were an exact match for: {entities}")
+            logger.debug(f"Found no images exactly matching: {entities}")
             return []
         else:
             return results
@@ -404,7 +404,7 @@ class BidsArchive:
         results = self.data.get(**entities)
 
         if len(results) == 0:
-            logger.error(f"No event files have all provided entities: "
+            logger.debug(f"No event files have all provided entities: "
                          f"{entities}")
             return []
         elif matchExact:
@@ -412,13 +412,14 @@ class BidsArchive:
                 if result.get_entities() == entities:
                     return [result]
 
-            logger.error(f"No event files were an exact match for: {entities}")
+            logger.debug(f"No event files were an exact match for: {entities}")
             return []
         else:
             return results
 
     @staticmethod
-    def _imagesAppendCompatible(img1: nib.Nifti1Image, img2: nib.Nifti1Image):
+    def _imagesAppendCompatible(img1: nib.Nifti1Image,
+                                img2: nib.Nifti1Image) -> Tuple[bool, str]:
         """
         Verifies that two Nifti image headers match in along a defined set of
         NIfTI header fields which should not change during a continuous fMRI
@@ -453,9 +454,9 @@ class BidsArchive:
 
             # Use slightly more complicated check to properly match nan values
             if not (np.allclose(v1, v2, atol=0.0, equal_nan=True)):
-                logger.debug("NIfTI headers don't match on field: %s "
-                             "(v1: %s, v2: %s)\n", field, v1, v2)
-                return False
+                errorMsg = (f"NIfTI headers don't match on field: {field} "
+                            f"(v1: {v1}, v2: {v2})")
+                return (False, errorMsg)
 
         # Two NIfTI headers are append-compatible in 2 cases:
         # 1) Pixel dimensions are exactly equal, and dimensions are equal except
@@ -501,12 +502,11 @@ class BidsArchive:
                 dimensionMatch = False
 
         if not dimensionMatch:
-            logger.debug("NIfTI headers not append compatible due to mismatch "
-                         "in dimensions and pixdim fields. "
-                         "Dim 1: %s | Dim 2 %s\n"
-                         "Pixdim 1: %s | Pixdim 2 %s",
-                         dimensions1, dimensions2, pixdim1, pixdim2)
-            return False
+            errorMsg = ("NIfTI headers not append compatible due to mismatch "
+                        "in dimensions and pixdim fields.\n"
+                        f"Dim 1: {dimensions1} | Dim 2: {dimensions2}\n"
+                        f"Pixdim 1: {pixdim1} | Pixdim 2: {pixdim2}\n")
+            return (False, errorMsg)
 
         # Compare xyzt_units (spatial and temporal dimension units)
         # Spatial and temporal dimensions should both be the same; however, it's
@@ -534,16 +534,17 @@ class BidsArchive:
             pass
         # In any other case, not append compatible
         else:
-            logger.debug(
+            errorMsg = (
                 f"NIfTI headers not append compatible due to mismatch in "
                 f"xyzt_units field (spatial match: {spatialMatch}, "
                 f"temporal match: {temporalMatch}. "
                 f"xyzt_units 1: {xyztUnits1} | xyzt_units 2: {xyztUnits2}")
+            return (False, errorMsg)
 
-        return True
+        return (True, "")
 
     @staticmethod
-    def _metadataAppendCompatible(meta1: dict, meta2: dict):
+    def _metadataAppendCompatible(meta1: dict, meta2: dict) -> Tuple[bool, str]:
         """
         Verifies two metadata dictionaries match in a set of required fields. If
         a field is present in only one or neither of the two dictionaries, this
@@ -586,12 +587,16 @@ class BidsArchive:
                 continue
 
             if value1 != value2:
-                logger.debug(f"Metadata doesn't match on field: {field}"
-                             f"(value 1: {value1}, value 2: {value2}")
-                return False
+                errorMsg = (f"Metadata doesn't match on field: {field} "
+                            f"(value 1: {value1}, value 2: {value2}")
+                return (False, errorMsg)
 
         # These fields should not match between two images for a valid append
-        differentFields = ["AcquisitionTime", "AcquisitionNumber"]
+        # (i.e., data should be different)
+        differentFields = [
+            "AcquisitionTime",  # should be collected at different times
+            "AcquisitionNumber",  # acquisition ID's should be different
+            ]
 
         for field in differentFields:
             value1 = meta1.get(field, None)
@@ -603,15 +608,16 @@ class BidsArchive:
                 continue
 
             if value1 == value2:
-                logger.debug(f"Metadata matches (shouldn't) on field: {field}"
-                             f"(value 1: {value1}, value 2: {value2}")
-                return False
+                errorMsg = (f"Metadata matches (shouldn't) on field: {field} "
+                            f"(value 1: {value1}, value 2: {value2})")
+                return (False, errorMsg)
 
-        return True
+        return (True, "")
 
     def appendIncremental(self,
                           incremental: BidsIncremental,
-                          makePath: bool = True) -> bool:
+                          makePath: bool = True,
+                          validateAppend: bool = True) -> bool:
         """
         Appends a BIDS Incremental's image data and metadata to the archive,
         creating new directories if necessary (this behavior can be overridden).
@@ -620,6 +626,9 @@ class BidsArchive:
             incremental: BIDS Incremental to append
             makePath: Create new directory path for BIDS-I data if needed.
                 (default: True).
+            validateAppend: Compares image metadata and NIfTI headers to check
+                that the images being appended are part of the same sequence and
+                don't conflict with each other (default: True).
 
         Raises:
             RuntimeError: If the image to append to in the archive is not either
@@ -678,12 +687,20 @@ class BidsArchive:
             archiveImg = images[0].get_image()
 
             # Validate header match
-            if not self._imagesAppendCompatible(incremental.image,
-                                                archiveImg):
-                raise RuntimeError("NIfTI headers not append compatible")
-            if not self._metadataAppendCompatible(incremental.imageMetadata,
-                                                  self.getMetadata(imgPath)):
-                raise RuntimeError("Image metadata not append compatible")
+            if validateAppend:
+                compatible, errorMsg = self._imagesAppendCompatible(
+                    incremental.image,
+                    archiveImg)
+                if not compatible:
+                    raise RuntimeError(
+                        "NIfTI headers not append compatible: " + errorMsg)
+
+                compatible, errorMsg = self._metadataAppendCompatible(
+                    incremental.imageMetadata,
+                    self.getMetadata(imgPath))
+                if not compatible:
+                    raise RuntimeError(
+                        "Image metadata not append compatible: " + errorMsg)
 
             # Build 4-D NIfTI if archive has 3-D, concat to 4-D otherwise
             incrementalData = getNiftiData(incremental.image)
