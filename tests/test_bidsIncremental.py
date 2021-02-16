@@ -6,13 +6,13 @@ import pickle
 import shutil
 import tempfile
 
-from bids_validator import BIDSValidator
+from bids.layout import BIDSImageFile
 from bids.layout.writing import build_path as bids_build_path
-import pytest
+from bids_validator import BIDSValidator
 import nibabel as nib
 import numpy as np
+import pytest
 
-from rtCommon.bidsIncremental import BidsIncremental
 from rtCommon.bidsCommon import (
     getNiftiData,
     BidsFileExtension,
@@ -20,6 +20,7 @@ from rtCommon.bidsCommon import (
     BIDS_FILE_PATTERN,
     metadataFromProtocolName,
 )
+from rtCommon.bidsIncremental import BidsIncremental
 from rtCommon.errors import MissingMetadataError
 
 logger = logging.getLogger(__name__)
@@ -69,7 +70,8 @@ def testInvalidConstruction(sample2DNifti1, sample4DNifti1, imageMetadata):
 
 # Test that valid arguments produce a BIDS incremental
 def testValidConstruction(sample3DNifti1, sample3DNifti2,
-                          sample4DNifti1, sampleNifti2, imageMetadata):
+                          sample4DNifti1, sampleNifti2, bidsArchive4D,
+                          imageMetadata):
     # 3-D should be promoted to 4-D
     assert BidsIncremental(sample3DNifti1, imageMetadata) is not None
     assert BidsIncremental(sample3DNifti2, imageMetadata) is not None
@@ -85,6 +87,11 @@ def testValidConstruction(sample3DNifti1, sample3DNifti2,
     imageMetadata[repetitionTimeKey] = 1.5
     assert BidsIncremental(sample4DNifti1, imageMetadata) is not None
     imageMetadata[repetitionTimeKey] = original
+
+    # Passing a BIDSImageFile is also valid
+    image = bidsArchive4D.getImages()[0]
+    assert type(image) is BIDSImageFile
+    assert BidsIncremental(image, imageMetadata) is not None
 
 
 # Test that the provided image metadata dictionary takes precedence over the
@@ -331,9 +338,23 @@ def testDiskOutput(validBidsI):
 
 # Test serialization results in equivalent BIDS-I object
 def testSerialization(validBidsI):
+    # TODO(spolcyn): Fix this method to actually check that the data is
+    # contained within the object, not just the file references (otherwise, this
+    # test passes when the file references work on the same system, but fail if
+    # it's sent to another computer and the data isn't included for unpickling)
+
+    # TODO(spolcyn): Make this test fail before making any changes
+    logger.info("in memory: %s", validBidsI.image.in_memory)
+    validBidsI.image.get_fdata()
+    logger.info("in memory: %s", validBidsI.image.in_memory)
+
     # Pickle the object
     pickledBuf = io.BytesIO()
     pickle.dump(validBidsI, pickledBuf)
+
+    # NOTE(debug): Want to get the size of the pickled object
+    pickledBuf.seek(0, os.SEEK_END)
+    logger.info("tell: %s", pickledBuf.tell())
 
     # Unpickle the object
     pickledBuf.seek(0)

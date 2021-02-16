@@ -12,6 +12,7 @@ from operator import eq as opeq
 import os
 from typing import Any, Callable
 
+from bids.layout import BIDSImageFile
 from bids.layout.writing import build_path as bids_build_path
 import logging
 import nibabel as nib
@@ -51,7 +52,7 @@ class BidsIncremental:
         Initializes a BIDS Incremental object with provided image and metadata.
 
         Args:
-            image: Nifti image as an NiBabel NiftiImage.
+            image: NIfTI image as an NiBabel NiftiImage or PyBids BIDSImageFile
             imageMetadata: Metadata for image, which must include all variables
                 in BidsIncremental.REQUIRED_IMAGE_METADATA.
             datasetMetadata: Top-level dataset metadata for the BIDS dataset
@@ -80,10 +81,12 @@ class BidsIncremental:
         """
         """ Do basic input validation """
         # IMAGE
-        validTypes = [nib.Nifti1Image, nib.Nifti2Image]
+        validTypes = [nib.Nifti1Image, nib.Nifti2Image, BIDSImageFile]
         if image is None or type(image) not in validTypes:
             raise TypeError("Image must be Nibabel Nifti1 or Nifti22 (got "
                             f"{type(image)}")
+        if type(image) is BIDSImageFile:
+            image = image.get_image()
 
         # DATASET METADATA
         if datasetMetadata is not None:
@@ -237,9 +240,8 @@ class BidsIncremental:
 
     def _postprocessMetadata(self, imageMetadata: dict) -> dict:
         """
-        Post-process metadata once all required fields are given to create
-        derived fields (e.g., TaskName from task) and set data types to expected
-        types (e.g., set run to an integer).
+        Post-process metadata once all required fields are given (e.g., to create
+        derived fields like 'TaskName' from 'task').
 
         Args:
             imageMetadata: Metadata dictionary to post-process.
@@ -247,10 +249,6 @@ class BidsIncremental:
         Returns:
             Metadata dictionary with derived fields set.
         """
-        # Run should be an integer
-        if imageMetadata.get("run", None) is not None:
-            imageMetadata["run"] = int(imageMetadata["run"])
-
         # TaskName is required BIDS metadata that can be derived from the
         # required field, 'task'
         imageMetadata["TaskName"] = imageMetadata["task"]
