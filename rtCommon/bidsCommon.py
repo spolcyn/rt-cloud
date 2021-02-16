@@ -10,7 +10,7 @@ import functools
 import logging
 import os
 import re
-from typing import Any, Callable, Tuple
+from typing import Any, Callable
 
 import pydicom
 import nibabel as nib
@@ -232,17 +232,18 @@ def metadataFromProtocolName(protocolName: str) -> dict:
     return foundEntities
 
 
-def getDicomMetadata(dicomImg: pydicom.dataset.Dataset) -> Tuple[dict, dict]:
+def getDicomMetadata(dicomImg: pydicom.dataset.Dataset, kind='all') -> dict:
     """
     Returns the public (even-numbered tags) and private (odd-numbered tags)
     metadata from the provided DICOM image.
 
     Args:
         dicomImg: A Pydicom object to read metadata from.
+        kind: Metadata category to get. 'public' for public DICOM tags,
+            'private' for private DICOM tags, 'all' for all DICOM tags.
 
     Returns:
-        Tuple of 2 dictionaries, the first containing the public metadata from
-            the image and the second containing the private metadata.
+        Dictionary containing requested metadata from the DICOM image.
 
     Raises:
         TypeError: If the image provided is not a pydicom.dataset.Dataset object
@@ -251,8 +252,9 @@ def getDicomMetadata(dicomImg: pydicom.dataset.Dataset) -> Tuple[dict, dict]:
     if not isinstance(dicomImg, pydicom.dataset.Dataset):
         raise TypeError("Expected pydicom.dataset.Dataset as argument")
 
-    publicMeta = {}
-    privateMeta = {}
+    metadata = {}
+    STORE_PRIVATE = (kind == 'all' or kind == 'private')
+    STORE_PUBLIC = (kind == 'all' or kind == 'public')
 
     ignoredTags = ['Pixel Data']  # the image's raw data is not metadata
 
@@ -266,11 +268,12 @@ def getDicomMetadata(dicomImg: pydicom.dataset.Dataset) -> Tuple[dict, dict]:
         value = str(elem.value)
 
         if elem.tag.is_private:
-            privateMeta[cleanedKey] = value
-        else:
-            publicMeta[cleanedKey] = value
+            if STORE_PRIVATE:
+                metadata[cleanedKey] = value
+        elif STORE_PUBLIC:
+            metadata[cleanedKey] = value
 
-    return (publicMeta, privateMeta)
+    return metadata
 
 
 def symmetricDictDifference(d1: dict, d2: dict,

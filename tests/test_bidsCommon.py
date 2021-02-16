@@ -67,11 +67,11 @@ def testMetadataExtraction(dicomImage, dicomMetadataSample):
         getDicomMetadata("this isn't a pydicom dataset")
 
     # Test a sampling of field names and values extracted by hand
-    public, private = getDicomMetadata(dicomImage)
+    metadata = getDicomMetadata(dicomImage, kind='all')
     for field, value in dicomMetadataSample.items():
-        assert public.get(field) == str(value)
+        assert metadata.get(field) == str(value)
 
-    # TODO(spolcyn): Also check private keys
+    # TODO(spolcyn): Also check private keys and public keys individually
 
 
 # Ensure entitity dictionary is loaded and parsed properly

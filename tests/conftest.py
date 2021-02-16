@@ -92,8 +92,7 @@ def dicomImage(dicomMetadataSample) -> pydicom.dataset.Dataset:
 # Public metadata for test DICOM file
 @pytest.fixture
 def dicomImageMetadata(dicomImage):
-    public, _ = getDicomMetadata(dicomImage)
-    return public
+    return getDicomMetadata(dicomImage, kind='public')
 
 
 """ END DICOM RELATED FIXTURES """
