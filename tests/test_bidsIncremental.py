@@ -1,5 +1,4 @@
 from copy import deepcopy
-import io
 import logging
 import os
 import pickle
@@ -337,28 +336,34 @@ def testDiskOutput(validBidsI):
 
 
 # Test serialization results in equivalent BIDS-I object
-def testSerialization(validBidsI):
-    # TODO(spolcyn): Fix this method to actually check that the data is
-    # contained within the object, not just the file references (otherwise, this
-    # test passes when the file references work on the same system, but fail if
-    # it's sent to another computer and the data isn't included for unpickling)
+def testSerialization(validBidsI, sample4DNifti1, imageMetadata, tmpdir):
+    # Copy the NIfTI source image to a different location
+    sourceFileName = 'test.nii'
+    sourceFilePath = os.path.join(tmpdir, sourceFileName)
+    nib.save(sample4DNifti1, sourceFilePath)
 
-    # TODO(spolcyn): Make this test fail before making any changes
-    logger.info("in memory: %s", validBidsI.image.in_memory)
-    validBidsI.image.get_fdata()
-    logger.info("in memory: %s", validBidsI.image.in_memory)
+    sourceNifti = nib.load(sourceFilePath)
+    incremental = BidsIncremental(sourceNifti, imageMetadata)
 
-    # Pickle the object
-    pickledBuf = io.BytesIO()
-    pickle.dump(validBidsI, pickledBuf)
+    # validBidsI is derived from a file elsewhere on disk, so we can use it as a
+    # reference once the file 'incremental' is derived from is removed
+    # Transitive property gives us:
+    # IF incremental == validBidsI AND validBidsI == deserialized
+    # THEN incremental == deserialized
+    assert incremental == validBidsI
 
-    # NOTE(debug): Want to get the size of the pickled object
-    pickledBuf.seek(0, os.SEEK_END)
-    logger.info("tell: %s", pickledBuf.tell())
+    # Serialize the object
+    serialized = pickle.dumps(incremental)
+    del incremental
 
-    # Unpickle the object
-    pickledBuf.seek(0)
-    unpickled = pickle.load(pickledBuf)
+    # Now remove image file so the deserialized object can't access it
+    os.remove(sourceFilePath)
+
+    # Deserialize the object
+    deserialized = pickle.loads(serialized)
 
     # Compare equality
-    assert unpickled == validBidsI
+    assert validBidsI == deserialized
+
+    # Check there's no file mapping
+    assert deserialized.image.file_map['image'].filename is None

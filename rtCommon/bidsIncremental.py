@@ -168,15 +168,33 @@ class BidsIncremental:
                              other.datasetMetadata)
             return False
 
-        if not np.array_equal(self.imageData, other.imageData):
-            differences = self.imageData != other.imageData
-            logger.debug("Image data didn't match")
-            logger.debug("Difference count: %d (%f%%)",
-                         np.sum(differences),
-                         np.sum(differences) / np.size(differences) * 100.0)
+        if not self.readme == other.readme:
+            logger.debug(f"Readmes didn't match\nself: {self.readme}\n"
+                         f"other: {other.readme}")
+            return False
+
+        if not pd.DataFrame.equals(self.events, other.events):
+            logger.debug(f"Events file didn't match\n"
+                         f"self: {self.events}\n"
+                         f"other: {other.events}")
             return False
 
         return True
+
+    def __getstate__(self):
+        # Serialize NIfTI image using class-specific method
+        self.niftiImageClass = self.image.__class__
+        self.image = self.image.to_bytes()
+
+        return self.__dict__
+
+    def __setstate__(self, state):
+        self.__dict__ = state
+
+        if self.version == 1:
+            # Read bytes into NIfTI object
+            self.image = self.niftiImageClass.from_bytes(self.image)
+            del self.niftiImageClass
 
     def _preprocessMetadata(self, imageMetadata: dict) -> dict:
         """
