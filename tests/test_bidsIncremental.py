@@ -10,13 +10,14 @@ from bids.layout.writing import build_path as bids_build_path
 from bids_validator import BIDSValidator
 import nibabel as nib
 import numpy as np
+import pandas as pd
 import pytest
 
 from rtCommon.bidsCommon import (
-    getNiftiData,
-    BidsFileExtension,
     BIDS_DIR_PATH_PATTERN,
     BIDS_FILE_PATTERN,
+    BidsFileExtension,
+    getNiftiData,
     metadataFromProtocolName,
 )
 from rtCommon.bidsIncremental import BidsIncremental
@@ -143,6 +144,28 @@ def testEquals(sample4DNifti1, sample3DNifti1, imageMetadata):
     datasetMeta2 = {"Name": "Dataset_2", "BIDSVersion": "2.0"}
     assert BidsIncremental(sample4DNifti1, imageMetadata, datasetMeta1) != \
            BidsIncremental(sample4DNifti1, imageMetadata, datasetMeta2)
+
+    # Test different readme
+    incremental1 = BidsIncremental(sample4DNifti1, imageMetadata)
+    incremental2 = BidsIncremental(sample4DNifti1, imageMetadata)
+    readme1 = "README 1"
+    readme2 = "README 2"
+
+    incremental1.readme = readme1
+    incremental2.readme = readme2
+    assert incremental1 != incremental2
+
+    # Test different events file
+    incremental1 = BidsIncremental(sample4DNifti1, imageMetadata)
+    incremental2 = BidsIncremental(sample4DNifti1, imageMetadata)
+
+    events1 = {'onset': [1, 25, 50], 'duration': [10, 10, 10], 'response_time':
+               [15, 36, 70]}
+    events2 = {key: [v + 5 for v in events1[key]] for key in events1.keys()}
+
+    incremental1.events = pd.DataFrame(data=events1)
+    incremental2.events = pd.DataFrame(data=events2)
+    assert incremental1 != incremental2
 
 
 # Test that image metadata dictionaries can be properly created by the class

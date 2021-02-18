@@ -118,7 +118,7 @@ class BidsIncremental:
             newData = np.expand_dims(getNiftiData(self.image), -1)
             self.image = self.image.__class__(newData, self.image.affine,
                                               self.image.header)
-            correct3DHeaderTo4D(self.image, 1)
+            correct3DHeaderTo4D(self.image, self._imgMetadata['RepetitionTime'])
 
         assert len(self.imageDimensions) == 4
 
@@ -145,7 +145,7 @@ class BidsIncremental:
             difference = symmetricDictDifference(d1, d2, equal)
             logger.debug(valueName + " difference: %s", difference)
 
-        # Compare images
+        # Compare image headers
         if self.image.header != other.image.header:
             reportDifference("Image headers",
                              dict(self.image.header),
@@ -159,6 +159,15 @@ class BidsIncremental:
                              self._imgMetadata,
                              other._imgMetadata,
                              np.array_equal)
+            return False
+
+        # Compare full image data
+        if not np.array_equal(self.imageData, other.imageData):
+            differences = self.imageData != other.imageData
+            logger.debug("Image data didn't match")
+            logger.debug("Difference count: %d (%f%%)",
+                         np.sum(differences),
+                         np.sum(differences) / np.size(differences) * 100.0)
             return False
 
         # Compare dataset metadata
@@ -258,8 +267,8 @@ class BidsIncremental:
 
     def _postprocessMetadata(self, imageMetadata: dict) -> dict:
         """
-        Post-process metadata once all required fields are given (e.g., to create
-        derived fields like 'TaskName' from 'task').
+        Post-process metadata once all required fields are given (e.g., to
+        create derived fields like 'TaskName' from 'task').
 
         Args:
             imageMetadata: Metadata dictionary to post-process.
