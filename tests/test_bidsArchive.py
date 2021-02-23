@@ -174,6 +174,8 @@ def testGetImages(bidsArchive3D, sample3DNifti1, bidsArchiveMultipleRuns,
 
 # Test failing to find an image in an archive
 def testFailFindImage(bidsArchive3D, sample3DNifti1, imageMetadata, caplog):
+    caplog.set_level(logging.DEBUG)
+
     dataDict = {'subject': 'nonValidSubject'}
     assert bidsArchive3D.getImages(**dataDict) == []
     assert f'Found no images with all entities: {dataDict}' in caplog.text
