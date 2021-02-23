@@ -280,6 +280,11 @@ class BidsIncremental:
         # required field, 'task'
         imageMetadata["TaskName"] = imageMetadata["task"]
 
+        # Some fields must be numbers in the BIDS standard
+        numberFields = ["RepetitionTime", "EchoTime"]
+        for field in numberFields:
+            imageMetadata[field] = float(imageMetadata[field])
+
         return imageMetadata
 
     @staticmethod

@@ -94,6 +94,14 @@ def testValidConstruction(sample3DNifti1, sample3DNifti2,
     assert BidsIncremental(image, imageMetadata) is not None
 
 
+# Test that metadata values are of the correct types, if required by BIDS
+def testMetadataTypes(validBidsI):
+    typeDict = {"RepetitionTime": float, "EchoTime": float}
+
+    for field, typ in typeDict.items():
+        assert type(validBidsI.getMetadataField(field)) is typ
+
+
 # Test that the provided image metadata dictionary takes precedence over the
 # metadata parsed from the protocol name, if any
 def testConstructionMetadataPrecedence(sample4DNifti1, imageMetadata):

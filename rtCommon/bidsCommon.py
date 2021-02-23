@@ -190,15 +190,14 @@ def adjustTimeUnits(imageMetadata: dict) -> None:
         if value is None:
             continue
         else:
-            value = int(value)
+            value = float(value)
 
         if value <= maxValue:
-            continue
+            imageMetadata[field] = value
         elif value / 1000.0 <= maxValue:
             logger.info(f"{field} has value {value} > {maxValue}. Assuming "
                         f"value is in milliseconds, converting to seconds.")
-            value = value / 1000.0
-            imageMetadata[field] = value
+            imageMetadata[field] = value / 1000.0
         else:
             raise ValueError(f"{field}'s max value is {maxValue}; {value} > "
                              f"{maxValue} even if interpreted as milliseconds.")
