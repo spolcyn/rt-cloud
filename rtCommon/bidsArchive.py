@@ -26,6 +26,7 @@ import nibabel as nib
 import numpy as np
 
 from rtCommon.bidsCommon import (
+    PYBIDS_PSEUDO_ENTITIES,
     correct3DHeaderTo4D,
     getNiftiData,
 )
@@ -816,7 +817,9 @@ class BidsArchive:
                                + len(image.dataobj.shape) + " dimensions)")
 
         metadata = self.data.get_metadata(candidate.path, include_entities=True)
-        metadata.pop('extension')  # unused by BIDS-I
+        # BIDS-I should only be given official entities used in a BIDS Archive
+        for pseudoEntity in PYBIDS_PSEUDO_ENTITIES:
+            metadata.pop(pseudoEntity)
 
         try:
             return BidsIncremental(image, metadata)

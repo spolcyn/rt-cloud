@@ -26,6 +26,7 @@ from rtCommon.bidsCommon import (
     BidsFileExtension,
     DATASET_DESC_REQ_FIELDS,
     DEFAULT_DATASET_DESC,
+    PYBIDS_PSEUDO_ENTITIES,
     adjustTimeUnits,
     correct3DHeaderTo4D,
     filterEntities,
@@ -79,12 +80,17 @@ class BidsIncremental:
             "Image shape: (64, 64, 27, 1); Metadata Key Count: 6; BIDS-I
             Version: 1"
         """
+        # TODO(spolcyn): Enable a BIDS incremental to store an index that
+        # specifies where the image should be inserted into the archive. This
+        # would extend capabilities beyond just appending.
+
         """ Do basic input validation """
         # IMAGE
         validTypes = [nib.Nifti1Image, nib.Nifti2Image, BIDSImageFile]
         if image is None or type(image) not in validTypes:
-            raise TypeError("Image must be Nibabel Nifti1 or Nifti22 (got "
-                            f"{type(image)}")
+            raise TypeError("Image must be one of " +
+                            str([typ.__name__ for typ in validTypes]) +
+                            f"(got {type(image)})")
         if type(image) is BIDSImageFile:
             image = image.get_image()
 
@@ -109,18 +115,19 @@ class BidsIncremental:
 
         """ Validate and store image """
         # Remove singleton dimensions
-        self.image = nib.funcs.squeeze_image(image)
+        image = nib.funcs.squeeze_image(image)
 
-        imageShape = self.imageDimensions
+        imageShape = image.header.get_data_shape()
         if len(imageShape) < 3:
             raise ValueError("Image must have at least 3 dimensions")
         elif len(imageShape) == 3:
-            newData = np.expand_dims(getNiftiData(self.image), -1)
-            self.image = self.image.__class__(newData, self.image.affine,
-                                              self.image.header)
-            correct3DHeaderTo4D(self.image, self._imgMetadata['RepetitionTime'])
+            newData = np.expand_dims(getNiftiData(image), -1)
+            image = image.__class__(newData, image.affine, image.header)
+            correct3DHeaderTo4D(image, self._imgMetadata['RepetitionTime'])
 
-        assert len(self.imageDimensions) == 4
+        assert len(image.header.get_data_shape()) == 4
+
+        self.image = image
 
         # Configure README
         self.readme = "Generated BIDS-Incremental Dataset from RT-Cloud"
@@ -507,6 +514,7 @@ class BidsIncremental:
 
     @property
     def imageFileName(self) -> str:
+        # TODO(spolcyn): Support writing to a compressed NIfTI file
         return self.makeBidsFileName(BidsFileExtension.IMAGE)
 
     @property
@@ -562,6 +570,8 @@ class BidsIncremental:
             >>> print(archive)
             Root: /tmp/emptyDirectory | Subjects: 1 | Sessions: 1 | Runs: 1
         """
+        # TODO(spolcyn): Support writing to a compressed NIfTI file
+
         dataDirPath = os.path.join(datasetRoot, self.dataDirPath)
         descriptionPath = os.path.join(datasetRoot, "dataset_description.json")
         readmePath = os.path.join(datasetRoot, "README")
@@ -576,7 +586,8 @@ class BidsIncremental:
         # Write out image metadata
         with open(metadataPath, mode='w') as metadataFile:
             metadataToWrite = {key: self._imgMetadata[key] for key in
-                               self._imgMetadata if key not in self.ENTITIES}
+                               self._imgMetadata if key not in self.ENTITIES and
+                               key not in PYBIDS_PSEUDO_ENTITIES}
             json.dump(metadataToWrite, metadataFile, sort_keys=True, indent=4)
 
         with open(eventsPath, mode='w') as eventsFile:
