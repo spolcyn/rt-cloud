@@ -43,6 +43,9 @@ BIDS_DIR_PATH_PATTERN = "sub-{subject}[/ses-{session}]/{datatype<func>|func}"
 # Pattern for creating full path of BIDS file relative to archive root
 BIDS_FILE_PATH_PATTERN = BIDS_DIR_PATH_PATTERN + '/' + BIDS_FILE_PATTERN
 
+# 'Entities' reported by PyBids for files and used for searching, but that don't
+# actually exist in the BIDS Standard and that shouldn't be output in an archive
+PYBIDS_PSEUDO_ENTITIES = ['extension']
 
 # Valid extensions for various file types in the BIDS format
 class BidsFileExtension(Enum):
@@ -127,7 +130,7 @@ def makeDicomFieldBidsCompatible(dicomField: str) -> str:
     Examples:
         >>> field = "Repetition Time"
         >>> makeDicomFieldBidsCompatible(field)
-        'Repetition Time'
+        'RepetitionTime'
     """
     return re.compile('[^a-zA-z]').sub("", dicomField)
 
@@ -190,15 +193,14 @@ def adjustTimeUnits(imageMetadata: dict) -> None:
         if value is None:
             continue
         else:
-            value = int(value)
+            value = float(value)
 
         if value <= maxValue:
-            continue
+            imageMetadata[field] = value
         elif value / 1000.0 <= maxValue:
             logger.info(f"{field} has value {value} > {maxValue}. Assuming "
                         f"value is in milliseconds, converting to seconds.")
-            value = value / 1000.0
-            imageMetadata[field] = value
+            imageMetadata[field] = value / 1000.0
         else:
             raise ValueError(f"{field}'s max value is {maxValue}; {value} > "
                              f"{maxValue} even if interpreted as milliseconds.")

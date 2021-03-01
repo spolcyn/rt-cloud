@@ -22,6 +22,16 @@ def testTimeUnitAdjustment():
     etKey = 'EchoTime'
     metadata = {}
 
+    # Test values that are correct numbers, but strings and need to be converted
+    rtValidButString = '50'
+    etValidButString = '.5'
+    metadata[rtKey] = rtValidButString
+    metadata[etKey] = etValidButString
+
+    adjustTimeUnits(metadata)
+    assert metadata[rtKey] == float(rtValidButString)
+    assert metadata[etKey] == float(etValidButString)
+
     # Test values above max, but convertible
     rtConvertible = 1000
     etConvertible = 10

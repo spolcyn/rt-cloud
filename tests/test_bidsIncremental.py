@@ -63,9 +63,12 @@ def testInvalidConstruction(sample2DNifti1, sample4DNifti1, imageMetadata):
         imageMetadata[key] = original
 
     # Test non-image object
-    with pytest.raises(TypeError):
-        BidsIncremental(image="definitely not an image",
+    with pytest.raises(TypeError) as err:
+        notImage = "definitely not an image"
+        BidsIncremental(image=notImage,
                         imageMetadata=imageMetadata)
+        assert ("Image must be one of [nib.Nifti1Image, nib.Nifti2Image, "
+               f"BIDSImageFile (got {type(notImage)})" in str(err.value))
 
 
 # Test that valid arguments produce a BIDS incremental
@@ -92,6 +95,14 @@ def testValidConstruction(sample3DNifti1, sample3DNifti2,
     image = bidsArchive4D.getImages()[0]
     assert type(image) is BIDSImageFile
     assert BidsIncremental(image, imageMetadata) is not None
+
+
+# Test that metadata values are of the correct types, if required by BIDS
+def testMetadataTypes(validBidsI):
+    typeDict = {"RepetitionTime": float, "EchoTime": float}
+
+    for field, typ in typeDict.items():
+        assert type(validBidsI.getMetadataField(field)) is typ
 
 
 # Test that the provided image metadata dictionary takes precedence over the
