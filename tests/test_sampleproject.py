@@ -4,13 +4,11 @@ import time
 import projects.sample.sample as sample
 from tests.backgroundTestServers import BackgroundTestServers
 from rtCommon.clientInterface import ClientInterface
+from tests.common import test_sampleProjectPath, testRootPath
 
-testDir = os.path.dirname(__file__)
-rootPath = os.path.dirname(testDir)
-samplePath = os.path.join(rootPath,'projects/sample')
-tmpDir = os.path.join(testDir, 'tmp/')
+tmpDir = os.path.join(testRootPath, 'tmp/')
 
-allowedDirs =  ['/tmp', samplePath]
+allowedDirs =  ['/tmp', test_sampleProjectPath]
 allowedFileTypes = ['.dcm', '.txt']
 
 class TestSampleProject:
