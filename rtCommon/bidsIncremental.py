@@ -198,11 +198,16 @@ class BidsIncremental:
         return True
 
     def __getstate__(self):
-        # Serialize NIfTI image using class-specific method
-        self.niftiImageClass = self.image.__class__
-        self.image = self.image.to_bytes()
+        # Use a shallow copy of __dict__ to avoid modifying the actual
+        # Incremental object during serialization.
+        state = self.__dict__.copy()
 
-        return self.__dict__
+        # Serialize NIfTI image using class-specific method, and store its
+        # specific NIfTI1/NIfTI2 class object for deserialization
+        state['image'] = self.image.to_bytes()
+        state['niftiImageClass'] = self.image.__class__
+
+        return state
 
     def __setstate__(self, state):
         self.__dict__ = state
