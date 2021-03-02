@@ -22,6 +22,7 @@ from bids.layout import (
     BIDSImageFile,
     BIDSLayout,
 )
+from bids.layout.writing import write_to_file as bids_write_to_file
 import nibabel as nib
 import numpy as np
 
@@ -31,7 +32,12 @@ from rtCommon.bidsCommon import (
     getNiftiData,
 )
 from rtCommon.bidsIncremental import BidsIncremental
-from rtCommon.errors import MissingMetadataError, StateError
+from rtCommon.errors import (
+    DimensionError,
+    MetadataMismatchError,
+    MissingMetadataError,
+    StateError,
+)
 
 # Silence future warning
 bc_set_option('extension_initial_dot', True)
@@ -137,23 +143,50 @@ class BidsArchive:
         """
         return os.path.join(self.rootPath, self._stripLeadingSlash(relPath))
 
-    def fileExistsInArchive(self, path: str) -> bool:
-        if self.data is None:
-            return False
-        else:
-            path = self._stripLeadingSlash(path)
-            fileExists = self.data.get_file(path) is not None
-            logger.debug("File %s exists: %s", path, fileExists)
-            return fileExists
+    def tryGetFile(self, path: str) -> BIDSFile:
+        """
+        Tries to get a file from the archive using different interpretations of
+        the target path. Interpretations considered are:
+        1) Path with leading slash, relative to filesystem root
+        2) Path with leading slash, relative to archive root
+        3) Path with no leading slash, assume relative to archive root
 
-    def dirExists(self, relPath: str) -> bool:
-        if self.data is None:
-            return False
-        # search for matching directory in the dataset
+        Args:
+            path: Path to the file to attempt to get.
+
+        Returns:
+            BIDSFile (or subclass) if a matching file was found, None otherwise.
+
+        Examples:
+            >>> archive = BidsArchive('/path/to/archive')
+            >>> filename = 'sub-01_task-test_bold.nii.gz'
+            >>> archive.tryGetFile('/tmp/archive/sub-01/func/' + filename)
+            <BIDSImageFile filename=/tmp/archive/sub-01/func/sub-01_task-test\
+            _bold.nii.gz
+            >>> archive.tryGetFile('/' + filename)
+            <BIDSImageFile filename=/tmp/archive/sub-01/func/sub-01_task-test\
+            _bold.nii.gz
+            >>> archive.tryGetFile(filename)
+            <BIDSImageFile filename=/tmp/archive/sub-01/func/sub-01_task-test\
+            _bold.nii.gz
+        """
+        # 1) Path with leading slash, relative to filesystem root
+        # 3) Path with no leading slash, assume relative to archive root
+        archiveFile = self.data.get_file(path)
+        if archiveFile is not None:
+            return archiveFile
+
+        # 2) Path with leading slash, relative to archive root
+        strippedRootPath = self._stripLeadingSlash(path)
+        archiveFile = self.get_file(strippedRootPath)
+        if archiveFile is not None:
+            return archiveFile
+
+        return None
+
+    @failIfEmpty
+    def dirExistsInArchive(self, relPath: str) -> bool:
         return os.path.isdir(self.absPathFromRelPath(relPath))
-
-    def pathExists(self, path: str) -> bool:
-        return self.fileExistsInArchive(path) or self.dirExists(path)
 
     @failIfEmpty
     def getImages(self, matchExact: bool = False,
@@ -231,105 +264,60 @@ class BidsArchive:
         else:
             return results
 
-    def _ensurePathExists(self, relPath: str):
-        """
-        Ensures the provided directory path exists in the dataset, creating
-        directories if needed.
-
-        Args:
-            relPath: Path to ensure existence of, relative to directory root.
-                All parts of the path are assumed to be directories.
-
-        Returns:
-            True if a layout update is needed, false otherwise.
-        """
-        if self.dirExists(relPath):
-            return False
-        else:
-            os.makedirs(self.absPathFromRelPath(relPath))
-            return True
-
     def _updateLayout(self):
         """
         Updates the layout of the dataset so that any new metadata or image
         files are added to the index.
         """
+        # Updating layout is currently quite expensive. However, the underlying
+        # PyBids implementation uses a SQL database to store the index, and it
+        # has no public methods to cleanly and incrementally update the DB.
         self.data = BIDSLayout(self.rootPath)
 
-    def _addImage(self, img: nib.Nifti1Image, path: str) -> None:
+    def _addImage(self, img: nib.Nifti1Image, path: str,
+                  updateLayout: bool = True) -> None:
         """
-        Add an image to the dataset at the provided path, creating the path if
-        it does not yet exist.
+        Replace the image in the dataset at the provided path, creating the path
+        if it does not exist.
+
+        Args:
+            img: The image to add to the archive
+            path: Relative path in archive at which to add image
+            updateLayout: Update the underlying layout object upon conclusion of
+                the image addition.
         """
-        logger.debug("Writing new image to %s", self.absPathFromRelPath(path))
-        layoutUpdateRequired = self._ensurePathExists(os.path.dirname(path))
+        bids_write_to_file(path, img.to_bytes(), content_mode='binary',
+                           root=self.rootPath, conflicts='overwrite')
 
-        absPath = self.absPathFromRelPath(path)
-        nib.save(img, absPath)
-
-        if layoutUpdateRequired:
+        if updateLayout:
             self._updateLayout()
 
-    def _addMetadata(self, metadata: dict, path: str) -> None:
-        absPath = self.absPathFromRelPath(path)
+    def _addMetadata(self, metadata: dict, path: str,
+                     updateLayout: bool = True) -> None:
+        """
+        Replace the sidecar metadata in the dataset at the provided path,
+        creating the path if it does not exist.
 
-        with open(absPath, 'w', encoding='utf-8') as metadataFile:
-            json.dump(metadata, metadataFile, ensure_ascii=False, indent=4)
+        Args:
+            metadata: Metadata key/value pairs to add.
+            path: Relative path in archive at which to add image
+            updateLayout: Update the underlying layout object upon conclusion of
+                the metadata addition.
+        """
+        metadataJSONString = json.dumps(metadata, ensure_ascii=False, indent=4)
+        bids_write_to_file(path, contents=metadataJSONString,
+                           content_mode='text', root=self.rootPath,
+                           conflicts='overwrite')
 
-        logger.debug("Wrote new metadata to %s", absPath)
-
-        self._updateLayout()
-
-    # Used to update the archive if any on-disk changes have happened
-    def _update(self):
-        if self.data:
+        if updateLayout:
             self._updateLayout()
 
     def isEmpty(self) -> bool:
         return (self.data is None)
 
-    def tryGetFile(self, path: str) -> BIDSFile:
-        """
-        Tries to get a file from the archive using different interpretations of
-        the target path. Interpretations considered are:
-        1) Path with leading slash, relative to filesystem root
-        2) Path with leading slash, relative to archive root
-        3) Path with no leading slash
-
-        Args:
-            path: Path to the file to attempt to get.
-
-        Returns:
-            BIDSFile (or subclass) if a matching file was found, None otherwise.
-
-        Examples:
-            >>> archive = BidsArchive('/path/to/archive')
-            >>> filename = 'sub-01_task-test_bold.nii.gz'
-            >>> archive.tryGetFile('/tmp/archive/sub-01/func/' + filename)
-            <BIDSImageFile filename=/tmp/archive/sub-01/func/sub-01_task-test\
-            _bold.nii.gz
-            >>> archive.tryGetFile('/' + filename)
-            <BIDSImageFile filename=/tmp/archive/sub-01/func/sub-01_task-test\
-            _bold.nii.gz
-            >>> archive.tryGetFile(filename)
-            <BIDSImageFile filename=/tmp/archive/sub-01/func/sub-01_task-test\
-            _bold.nii.gz
-        """
-        # Tries absolute to disk root and relative to archive root
-        archiveFile = self.get_file(path)
-        if archiveFile is not None:
-            return archiveFile
-
-        # Try absolute to archive root
-        strippedRootPath = self._stripLeadingSlash(path)
-        archiveFile = self.get_file(strippedRootPath)
-        if archiveFile is not None:
-            return archiveFile
-
-        return None
-
     @failIfEmpty
-    def getMetadata(self, path: str, includeEntities: bool = True) -> dict:
+    def getSidecarMetadata(self, path: str,
+                           includeEntities: bool = True) -> dict:
         """
         Get metadata for the file at the provided path in the dataset. Sidecar
         metadata is always returned, and BIDS entities present in the filename
@@ -348,15 +336,16 @@ class BidsArchive:
         Examples:
             >>> archive = BidsArchive('/path/to/archive')
             >>> path = archive.getImages()[0].path
-            >>> archive.getMetadata(path)
+            >>> archive.getSidecarMetadata(path)
             {'AcquisitionMatrixPE': 320, 'AcquisitionNumber': 1, ... }
         """
         target = self.tryGetFile(path)
         if target is None:
             raise NoMatchError("File doesn't exist, can't get metadata")
         else:
-            return self.data.get_metadata(target.path,
-                                          include_entities=includeEntities)
+            # Counter-intuitively, 'None' returns all available entities, both
+            # those from the filename and those from the sidecar metadata
+            return target.get_entities(metadata=None)
 
     @failIfEmpty
     def getEvents(self, matchExact: bool = False,
@@ -466,12 +455,16 @@ class BidsArchive:
         # dimensions and pixel dimensions are exactly equal
         dimensionMatch = True
 
+        # 'dim' corresponds to the dimensions of the image
         dimensions1 = header1.get("dim")
         dimensions2 = header2.get("dim")
 
+        # In NIfTI, the 0th index of the 'dim' field is the # of dimensions
         nDimensions1 = dimensions1[0]
         nDimensions2 = dimensions2[0]
 
+        # 'pixdim' corresponds to the size of each pixel in real-world units
+        # (e.g., mm, um, etc.)
         pixdim1 = header1.get("pixdim")
         pixdim2 = header2.get("pixdim")
 
@@ -485,22 +478,26 @@ class BidsArchive:
                 dimensionMatch = False
         # Case 2
         else:
+            dimensionMatch = False
+
             dimensionsDifferBy1 = abs(nDimensions1 - nDimensions2) == 1
+            if dimensionsDifferBy1:
 
-            nSharedDimensions = min(nDimensions1, nDimensions2)
-            # Arrays are 1-indexed as # dimensions is stored in first slot
-            sharedDimensionsMatch = \
-                np.array_equal(dimensions1[1:nSharedDimensions + 1],
-                               dimensions2[1:nSharedDimensions + 1])
-            # Arrays are 1-indexed as value used in one method of voxel-to-world
-            # coordination translation is stored in the first slot (value should
-            # be equal across images)
-            sharedPixdimMatch = np.array_equal(pixdim1[:nSharedDimensions + 1],
-                                               pixdim2[:nSharedDimensions + 1])
+                nSharedDimensions = min(nDimensions1, nDimensions2)
+                # Arrays are 1-indexed as # dimensions is stored in first slot
+                sharedDimensionsMatch = \
+                    np.array_equal(dimensions1[1:nSharedDimensions + 1],
+                                   dimensions2[1:nSharedDimensions + 1])
+                if sharedDimensionsMatch:
 
-            if not (dimensionsDifferBy1 and sharedDimensionsMatch and
-                    sharedPixdimMatch):
-                dimensionMatch = False
+                    # Arrays are 1-indexed as value used in one method of
+                    # voxel-to-world coordination translation is stored in the
+                    # first slot (value should be equal across images)
+                    sharedPixdimMatch = \
+                        np.array_equal(pixdim1[:nSharedDimensions + 1],
+                                       pixdim2[:nSharedDimensions + 1])
+                    if sharedPixdimMatch:
+                        dimensionMatch = True
 
         if not dimensionMatch:
             errorMsg = ("NIfTI headers not append compatible due to mismatch "
@@ -510,31 +507,44 @@ class BidsArchive:
             return (False, errorMsg)
 
         # Compare xyzt_units (spatial and temporal dimension units)
-        # Spatial and temporal dimensions should both be the same; however, it's
-        # valid for only one image to have temporal dimensions defined, as long
-        # as spatial is the same for both
         field = 'xyzt_units'
         xyztUnits1 = header1[field]
         xyztUnits2 = header2[field]
 
-        spatialUnits1 = xyztUnits1 % 8
-        spatialUnits2 = xyztUnits2 % 8
-        spatialMatch = np.array_equal(spatialUnits1, spatialUnits2)
+        # NOTE: If units are 'unknown' (represented by value 0, in NIfTi
+        # header), then we assume the header is incomplete and don't thrown an
+        # error. Errors are only thrown when explicit conflicts are found
+        # between defined and non-matching units.
 
-        temporalUnits1 = xyztUnits1 - spatialUnits1
-        temporalUnits2 = xyztUnits2 - spatialUnits2
-        temporalMatch = np.array_equal(temporalUnits1, temporalUnits2)
-
-        # Append compatible if both dimensions match
-        if spatialMatch and temporalMatch:
-            pass
-        # Append compatible if spatial dimensions match, temporal dimensions
-        # don't, and at least one temporal dimension is undefined
-        elif (spatialMatch and not temporalMatch and
-              (temporalUnits1 == 0 or temporalUnits2 == 0)):
-            pass
-        # In any other case, not append compatible
+        # If all units are unknown, don't bother checking sub-units as they'll
+        # also be 0
+        if xyztUnits1 == 0 or xyztUnits2 == 0:
+            unitsMatch = True
         else:
+            # Bottom 3 bits of xyzt units is dedicated to the spatial units.
+            # Thus, modding by 2^3 = 8 leaves just those bits.
+            spatialUnits1 = xyztUnits1 % 8
+            spatialUnits2 = xyztUnits2 % 8
+            spatialUnknown = spatialUnits1 == 0 or spatialUnits2 == 0
+            if spatialUnknown:
+                spatialMatch = True
+            else:
+                spatialMatch = np.array_equal(spatialUnits1, spatialUnits2)
+
+            # Next 3 bits of xyzt units dedicated to temopral units. Thus,
+            # subtracting out the spatial units' contribution leaves just the
+            # temporal units.
+            temporalUnits1 = xyztUnits1 - spatialUnits1
+            temporalUnits2 = xyztUnits2 - spatialUnits2
+            temporalUnknown = temporalUnits1 == 0 or temporalUnits2 == 0
+            if temporalUnknown:
+                temporalMatch = True
+            else:
+                temporalMatch = np.array_equal(temporalUnits1, temporalUnits2)
+
+            unitsMatch = (spatialMatch and temporalMatch)
+
+        if not unitsMatch:
             errorMsg = (
                 f"NIfTI headers not append compatible due to mismatch in "
                 f"xyzt_units field (spatial match: {spatialMatch}, "
@@ -577,7 +587,9 @@ class BidsArchive:
                        "FlipAngle", "InPlanePhaseEncodingDirectionDICOM",
                        "ImageOrientationPatientDICOM", "PartialFourier"]
 
-        # If either field is None, skip and continue checking other fields
+        # If a particular metadata field is not defined (i.e., 'None'), then
+        # there can't be a conflict in value; thus, short-circuit and skip the
+        # rest of the check if a None value is found for a field.
         for field in matchFields:
             value1 = meta1.get(field, None)
             if value1 is None:
@@ -657,35 +669,34 @@ class BidsArchive:
             >>> archive.appendIncremental(incremental, makePath=False)
             False
         """
-        # 1) Create target path for image in archive
+        # 1) Create target paths for image in archive
         dataDirPath = incremental.dataDirPath
         imgPath = incremental.imageFilePath
         metadataPath = incremental.metadataFilePath
 
         # 2) Verify we have a valid way to append the image to the archive.
-        # 3 cases:
+        # 4 cases:
         # 2.0) Archive is empty and must be created
-        # 2.1) Image already exists within archive, append this Nifti to it
+        # 2.1) Image already exists within archive, append this NIfTI to it
         # 2.2) Image doesn't exist in archive, but rest of the path is valid for
         # the archive; create new Nifti file within the archive
-        # 2.3) Neither image nor path is valid for provided archive; fail append
-        if self.isEmpty() and makePath:
-            incremental.writeToDisk(self.rootPath)
-            self._updateLayout()
+        # 2.3) No image append possible and no creation possible; fail append
 
-        elif self.pathExists(imgPath):
+        # 2.0) Archive is empty and must be created
+        if self.isEmpty():
+            if makePath:
+                incremental.writeToDisk(self.rootPath)
+                self._updateLayout()
+                return True
+            else:
+                # If can't create new files in an empty archive, no valid append
+                return False
+
+        # 2.1) Image already exists within archive, append this NIfTI to it
+        imageFile = self.tryGetFile(imgPath)
+        if imageFile is not None:
             logger.debug("Image exists in archive, appending")
-
-            # Supplement entity dict with file name entities that the BIDSLayout
-            # returns that aren't official bids entities
-            entityDict = incremental.entities
-            entityDict['datatype'] = incremental.datatype
-            entityDict['suffix'] = incremental.suffix
-
-            # The one exact match must exist because the path exists
-            images = self.getImages(**entityDict, matchExact=True)
-            assert len(images) == 1
-            archiveImg = images[0].get_image()
+            archiveImg = imageFile.get_image()
 
             # Validate header match
             if validateAppend:
@@ -693,56 +704,59 @@ class BidsArchive:
                     incremental.image,
                     archiveImg)
                 if not compatible:
-                    raise RuntimeError(
+                    raise MetadataMismatchError(
                         "NIfTI headers not append compatible: " + errorMsg)
 
+                # TODO(spolcyn): Optimize this and getSidecarMetadata to use the
+                # already-retrieved BIDS imageFile rather than doing another
+                # search with the file path
                 compatible, errorMsg = self._metadataAppendCompatible(
                     incremental.imageMetadata,
-                    self.getMetadata(imgPath))
+                    self.getSidecarMetadata(imgPath))
                 if not compatible:
-                    raise RuntimeError(
+                    raise MetadataMismatchError(
                         "Image metadata not append compatible: " + errorMsg)
 
-            # Build 4-D NIfTI if archive has 3-D, concat to 4-D otherwise
-            incrementalData = getNiftiData(incremental.image)
+            # Ensure archive image is 4D, expanding if not
             archiveData = getNiftiData(archiveImg)
-
-            # RT-Cloud assumes 3D or 4D NIfTI images, other sizes have unknown
-            # interpretations
-            dimensions = len(archiveData.shape)
-            if dimensions == 3:
+            nDimensions = len(archiveData.shape)
+            if nDimensions == 3:
                 archiveData = np.expand_dims(archiveData, 3)
                 correct3DHeaderTo4D(archiveImg, incremental.getMetadataField(
                     "RepetitionTime"))
-            elif dimensions != 4:
-                raise RuntimeError("Expected image to have 3 or 4 dimensions "
-                                   f"(got {dimensions} dimensions)")
+            elif nDimensions == 4:
+                pass
+            else:
+                # RT-Cloud assumes 3D or 4D NIfTI images, other sizes have
+                # unknown interpretations
+                raise DimensionError("Expected image to have 3 or 4 dimensions "
+                                     f"(got {nDimensions})")
 
+            # Create the new, combined image to replace the old one
             # TODO(spolcyn): Replace this with Nibabel's concat_images function
             # when the dtype issue with save/load cycle is fixed
             # https://github.com/nipy/nibabel/issues/986
-            newArchiveData = np.concatenate((archiveData, incrementalData),
-                                            axis=3)
-
+            newArchiveData = np.concatenate(
+                (archiveData, getNiftiData(incremental.image)), axis=3)
             newImg = nib.Nifti1Image(newArchiveData,
-                                     archiveImg.affine,
+                                     affine=archiveImg.affine,
                                      header=archiveImg.header)
             newImg.update_header()
             self._addImage(newImg, imgPath)
+            return True
 
         # 2.2) Image doesn't exist in archive, but rest of the path is valid for
         # the archive; create new Nifti file within the archive
-        elif self.pathExists(dataDirPath) or makePath:
+        if self.dirExistsInArchive(dataDirPath) or makePath:
             logger.debug("Image doesn't exist in archive, creating")
-            self._addImage(incremental.image, imgPath)
-            self._addMetadata(incremental.imageMetadata, metadataPath)
+            self._addImage(incremental.image, imgPath, updateLayout=False)
+            self._addMetadata(incremental.imageMetadata, metadataPath,
+                              updateLayout=False)
+            self._updateLayout()
+            return True
 
-        # Archive wasn't empty, specified paths didn't exist, and no permission
-        # given to make the path; append fails.
-        else:
-            return False
-
-        return True
+        # 2.3) No image append possible and no creation possible; fail append
+        return False
 
     @failIfEmpty
     def getIncremental(self, sliceIndex: int = 0, **entities) \
@@ -792,29 +806,36 @@ class BidsArchive:
             raise NoMatchError("Unable to find any data in archive that matches"
                                f" all provided entities: {entities}")
         elif len(candidates) > 1:
-            raise RuntimeError("Too many results for entities (expected 1, got "
-                               f"{len(candidates)})")
+            # TODO(spolcyn): Potentially switch to a RequestError here, pending
+            # further definition of RequestError
+            raise RuntimeError("Entities matched more than one image file; try "
+                               "specifying more to narrow to one match "
+                               f"(expected 1, got {len(candidates)})")
 
         # Create BIDS-I
         candidate = candidates[0]
         image = candidate.get_image()
 
         # Process error conditions and slice image if necessary
-        if len(image.dataobj.shape) == 3:
+        nDimensions = len(image.dataobj.shape)
+        if nDimensions == 3:
             if sliceIndex != 0:
                 raise IndexError(f"Matching image was a 3-D NIfTI; {sliceIndex}"
                                  f" too high for a 3-D NIfTI (must be 0)")
-        elif len(image.dataobj.shape) == 4:
-            slices = nib.four_to_three(image)
+        elif nDimensions == 4:
+            numSlices = image.dataobj.shape[3]
 
-            if sliceIndex < len(slices):
-                image = slices[sliceIndex]
+            if sliceIndex < numSlices:
+                image = image.__class__(image.dataobj[..., sliceIndex],
+                                        affine=image.affine,
+                                        header=image.header)
+                image.update_header()
             else:
                 raise IndexError(f"Image index {sliceIndex} too large for NIfTI"
-                                 f" volume of length {len(slices)}")
+                                 f" volume of length {numSlices}")
         else:
-            raise RuntimeError("Expected image to have 3 or 4 dimensions (got "
-                               + len(image.dataobj.shape) + " dimensions)")
+            raise DimensionError("Expected image to have 3 or 4 dimensions "
+                                 f"(got {nDimensions})")
 
         metadata = self.data.get_metadata(candidate.path, include_entities=True)
         # BIDS-I should only be given official entities used in a BIDS Archive

@@ -22,8 +22,13 @@ from rtCommon.bidsCommon import (
     isNiftiPath,
     symmetricDictDifference,
 )
+from tests.common import isValidBidsArchive
 
-from rtCommon.errors import MissingMetadataError, StateError
+from rtCommon.errors import (
+    MetadataMismatchError,
+    MissingMetadataError,
+    StateError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -192,10 +197,10 @@ def testFailEmpty(tmpdir):
     emptyArchive = BidsArchive(datasetRoot)
 
     with pytest.raises(StateError):
-        emptyArchive.pathExists("will fail anyway")
+        emptyArchive.dirExistsInArchive("will fail anyway")
         emptyArchive.getImages("will fail anyway")
         emptyArchive.addImage(None, "will fall anyway")
-        emptyArchive.getMetadata("will fall anyway")
+        emptyArchive.getSidecarMetadata("will fall anyway")
         emptyArchive.addMetadata({"will": "fail"}, "will fall anyway")
         emptyArchive.getIncremental(subject="will fall anyway",
                                     session="will fall anyway",
@@ -208,7 +213,7 @@ def testFailEmpty(tmpdir):
 def testGetMetadata(bidsArchive3D, imageMetadata):
     # all entities in imageMetadata should be returned
     EXTENSION = '.nii'
-    returnedMeta = bidsArchive3D.getMetadata(
+    returnedMeta = bidsArchive3D.getSidecarMetadata(
         bids_build_path(imageMetadata, BIDS_FILE_PATH_PATTERN) + EXTENSION)
     imageMetadata['extension'] = EXTENSION
     imageMetadata['datatype'] = 'func'
@@ -465,7 +470,7 @@ def testConflictingNiftiHeaderAppend(bidsArchive3D, sample3DNifti1,
                                      imageMetadata):
     # Modify NIfTI header in critical way (change the datatype)
     sample3DNifti1.header['datatype'] = 32  # 32=complex, should be uint16=512
-    with pytest.raises(RuntimeError):
+    with pytest.raises(MetadataMismatchError):
         bidsArchive3D.appendIncremental(BidsIncremental(sample3DNifti1,
                                                         imageMetadata))
 
@@ -474,7 +479,7 @@ def testConflictingNiftiHeaderAppend(bidsArchive3D, sample3DNifti1,
 def testConflictingMetadataAppend(bidsArchive3D, sample3DNifti1, imageMetadata):
     # Modify metadata in critical way (change the subject)
     imageMetadata['ProtocolName'] = 'not the same'
-    with pytest.raises(RuntimeError):
+    with pytest.raises(MetadataMismatchError):
         bidsArchive3D.appendIncremental(BidsIncremental(sample3DNifti1,
                                                         imageMetadata))
 
@@ -525,8 +530,8 @@ def testAppendNewSubject(bidsArchive4D, validBidsI):
 
 
 # Test stripping an image off a BIDS archive works as expected
-def testStripImage(bidsArchive3D, bidsArchive4D, sample3DNifti1, sample4DNifti1,
-                   imageMetadata):
+def testGetIncremental(bidsArchive3D, bidsArchive4D, sample3DNifti1,
+                       sample4DNifti1, imageMetadata):
     # 3D Case
     reference = BidsIncremental(sample3DNifti1, imageMetadata)
     incremental = bidsArchive3D.getIncremental(
@@ -560,9 +565,9 @@ def testStripImage(bidsArchive3D, bidsArchive4D, sample3DNifti1, sample4DNifti1,
         assert incremental == reference
 
 
-# Test stripping image from BIDS archive fails when no matching images are
+# Test getting incremental from BIDS archive fails when no matching images are
 # present in the archive
-def testStripNoMatchingImage(bidsArchive4D, imageMetadata):
+def testGetIncrementalNoMatchingImage(bidsArchive4D, imageMetadata):
     imageMetadata['subject'] = 'notPresent'
     with pytest.raises(NoMatchError):
         incremental = bidsArchive4D.getIncremental(
@@ -575,9 +580,10 @@ def testStripNoMatchingImage(bidsArchive4D, imageMetadata):
         assert incremental is None
 
 
-# Test stripping image from BIDS archive raises warning when no matching
+# Test getting incremental from BIDS archive raises warning when no matching
 # metadata is present in the archive
-def testStripNoMatchingMetadata(bidsArchive4D, imageMetadata, caplog, tmpdir):
+def testGetIncrementalNoMatchingMetadata(bidsArchive4D, imageMetadata, caplog,
+                                         tmpdir):
     # Create path to sidecar metadata file
     relPath = bids_build_path(imageMetadata, BIDS_FILE_PATH_PATTERN) + \
         BidsFileExtension.METADATA.value
@@ -591,7 +597,7 @@ def testStripNoMatchingMetadata(bidsArchive4D, imageMetadata, caplog, tmpdir):
 
     # Remove the sidecar metadata file
     os.remove(absPath)
-    bidsArchive4D._update()
+    bidsArchive4D._updateLayout()
 
     # Without the sidecar metadata, not enough information for an incremental
     errorText = r"Archive lacks required metadata for BIDS Incremental " \
@@ -605,10 +611,10 @@ def testStripNoMatchingMetadata(bidsArchive4D, imageMetadata, caplog, tmpdir):
             session=imageMetadata["session"])
 
 
-# Test strip with an out-of-bounds slice index for the matching image (could be
-# either non-0 for 3D or beyond bounds for a 4D)
-def testStripSliceIndexOutOfBounds(bidsArchive3D, bidsArchive4D, imageMetadata,
-                                   caplog):
+# Test get incremental with an out-of-bounds slice index for the matching image
+# (could be either non-0 for 3D or beyond bounds for a 4D)
+def testGetIncrementalSliceIndexOutOfBounds(bidsArchive3D, bidsArchive4D,
+                                            imageMetadata, caplog):
     # Negative case
     outOfBoundsIndex = -1
     errorMsg = fr"Slice index must be >= 0 \(got {outOfBoundsIndex}\)"
@@ -655,9 +661,9 @@ def testStripSliceIndexOutOfBounds(bidsArchive3D, bidsArchive4D, imageMetadata,
         assert incremental is None
 
 
-# Test stripping when files are found, but none match provided parameters
+# Test get incremental when files are found, but none match provided parameters
 # exactly
-def testStripNoParameterMatch(bidsArchive4D, imageMetadata, caplog):
+def testGetIncrementalNoParameterMatch(bidsArchive4D, imageMetadata, caplog):
     # Test entity values that don't exist in the archive
     errorText = r"Unable to find any data in archive that matches" \
                 r" all provided entities: \{.*?\}"
