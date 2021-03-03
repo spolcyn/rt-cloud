@@ -96,24 +96,6 @@ def getNiftiData(image: nib.Nifti1Image) -> np.ndarray:
     return np.asanyarray(image.dataobj, dtype=image.dataobj.dtype)
 
 
-def isNiftiPath(path: str) -> bool:
-    """
-    Returns true if the provided path points to an uncompressed NIfTI file,
-    false otherwise.
-    """
-    _, ext = os.path.splitext(path)
-    return ext == '.nii'
-
-
-def isJsonPath(path: str) -> bool:
-    """
-    Returns true if the provided path points to an uncompressed NIfTI file,
-    false otherwise.
-    """
-    _, ext = os.path.splitext(path)
-    return ext == '.json'
-
-
 def makeDicomFieldBidsCompatible(dicomField: str) -> str:
     """
     Remove non-alphanumeric characters to make a DICOM field name

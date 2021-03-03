@@ -7,8 +7,6 @@ from rtCommon.bidsCommon import (
     adjustTimeUnits,
     getDicomMetadata,
     getNiftiData,
-    isNiftiPath,
-    isJsonPath,
     loadBidsEntities,
     metadataFromProtocolName,
 )
@@ -134,21 +132,3 @@ def testGetNiftiData(sample4DNifti1):
                                    dtype=sample4DNifti1.dataobj.dtype)
 
     assert np.array_equal(extracted, fromRawDataobj)
-
-
-# Test NIfTI paths are correctly identified
-def testCheckNiftiPath():
-    assert isNiftiPath("test.nii")
-    assert isNiftiPath("test_test_test_test.run2.old.exp16.nii")
-    assert not isNiftiPath("test.jpeg")
-    assert not isNiftiPath("test.nii.jpeg")
-    assert not isNiftiPath("test.nii.gz")
-
-
-# Test JSON (aka BIDS sidecar metdata) paths are correctly identified
-def testCheckJsonPath():
-    assert isJsonPath("test.json")
-    assert isJsonPath("test_test_test_test.run2.old.exp16.json")
-    assert not isJsonPath("test.jpeg")
-    assert not isJsonPath("test.json.jpeg")
-    assert not isJsonPath("test.json.gz")

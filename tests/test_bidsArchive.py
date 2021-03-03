@@ -19,7 +19,6 @@ from rtCommon.bidsCommon import (
     BidsFileExtension,
     filterEntities,
     getNiftiData,
-    isNiftiPath,
     symmetricDictDifference,
 )
 from tests.common import isValidBidsArchive
@@ -65,7 +64,8 @@ def archiveHasMetadata(archive: BidsArchive, metadata: dict) -> bool:
     bidsLayout = archive.data
     archiveMetadata = {}
     for f in bidsLayout.get(return_type='filename'):
-        if not isNiftiPath(f):
+        _, ext = os.path.splitext(f)
+        if not ext == ".nii":
             continue
         archiveMetadata.update(
             bidsLayout.get_metadata(f, include_entities=True))
