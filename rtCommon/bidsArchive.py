@@ -37,6 +37,7 @@ from rtCommon.errors import (
     MetadataMismatchError,
     MissingMetadataError,
     StateError,
+    QueryError,
 )
 
 # Silence future warning
@@ -785,11 +786,9 @@ class BidsArchive:
             raise NoMatchError("Unable to find any data in archive that matches"
                                f" all provided entities: {entities}")
         elif len(candidates) > 1:
-            # TODO(spolcyn): Potentially switch to a RequestError here, pending
-            # further definition of RequestError
-            raise RuntimeError("Entities matched more than one image file; try "
-                               "specifying more to narrow to one match "
-                               f"(expected 1, got {len(candidates)})")
+            raise QueryError("Provided entities matched more than one image "
+                             "file; try specifying more to narrow to one match "
+                             f"(expected 1, got {len(candidates)})")
 
         # Create BIDS-I
         candidate = candidates[0]

@@ -27,6 +27,7 @@ from tests.common import isValidBidsArchive
 from rtCommon.errors import (
     MetadataMismatchError,
     MissingMetadataError,
+    QueryError,
     StateError,
 )
 
@@ -538,16 +539,25 @@ def testGetIncremental(bidsArchive3D, bidsArchive4D, sample3DNifti1,
 
 
 # Test getting incremental from BIDS archive fails when no matching images are
-# present in the archive
-def testGetIncrementalNoMatchingImage(bidsArchive4D, imageMetadata):
-    imageMetadata['subject'] = 'notPresent'
+# present in the archive (either 0 or too many)
+def testGetIncrementalNoMatchingImage(bidsArchive4D, bidsArchiveMultipleRuns,
+                                      imageMetadata):
     with pytest.raises(NoMatchError):
         incremental = bidsArchive4D.getIncremental(
-            subject=imageMetadata["subject"],
+            subject='notPresent',
             task=imageMetadata["task"],
             suffix=imageMetadata["suffix"],
             datatype="func",
             session=imageMetadata["session"])
+
+        assert incremental is None
+
+    with pytest.raises(QueryError):
+        incremental = bidsArchiveMultipleRuns.getIncremental(
+            subject=imageMetadata["subject"],
+            task=imageMetadata["task"],
+            suffix=imageMetadata["suffix"],
+            datatype="func")
 
         assert incremental is None
 
