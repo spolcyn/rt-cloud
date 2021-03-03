@@ -222,6 +222,11 @@ def testGetMetadata(bidsArchive3D, imageMetadata):
     diff = symmetricDictDifference(returnedMeta, imageMetadata, opeq)
     assert diff == {}
 
+    invalidValues = [5, ["path1", "path2"]]
+    for v in invalidValues:
+        with pytest.raises(TypeError):
+            bidsArchive3D.getSidecarMetadata(v)
+
 
 # Test getting an event file from the archive
 def testGetEvents(validBidsI, imageMetadata, tmpdir):

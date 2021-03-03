@@ -10,7 +10,7 @@ import json
 import logging
 import os
 import re
-from typing import List, Tuple
+from typing import List, Tuple, Union
 
 from bids.config import set_option as bc_set_option
 from bids.exceptions import (
@@ -317,7 +317,7 @@ class BidsArchive:
         return (self.data is None)
 
     @failIfEmpty
-    def getSidecarMetadata(self, path: str,
+    def getSidecarMetadata(self, image: Union[str, BIDSImageFile],
                            includeEntities: bool = True) -> dict:
         """
         Get metadata for the file at the provided path in the dataset. Sidecar
@@ -325,10 +325,14 @@ class BidsArchive:
         are returned by default (this can be disabled).
 
         Args:
-            path: Path to image file to get metadata for
+            image: Path or BIDSImageFile pointing to the image file to get
+                metadata for.
             includeEntities: True to include the entities in the filename (e.g.,
                 'subject', 'task', and 'session'), False to include only the
                 metadata in sidecar files. Defaults to True.
+
+        Raises:
+            TypeError: If image is not a str or BIDSImageFile.
 
         Returns:
             Dictionary with sidecar metadata for the file and any metadata that
@@ -340,13 +344,19 @@ class BidsArchive:
             >>> archive.getSidecarMetadata(path)
             {'AcquisitionMatrixPE': 320, 'AcquisitionNumber': 1, ... }
         """
-        target = self.tryGetFile(path)
-        if target is None:
-            raise NoMatchError("File doesn't exist, can't get metadata")
+        if isinstance(image, BIDSImageFile):
+            target = image
+        elif type(image) is str:
+            target = self.tryGetFile(image)
+            if target is None:
+                raise NoMatchError("File doesn't exist, can't get metadata")
         else:
-            # Counter-intuitively, 'None' returns all available entities, both
-            # those from the filename and those from the sidecar metadata
-            return target.get_entities(metadata=None)
+            raise TypeError("Expected image as str or BIDSImageFile "
+                            f"(got {type(image)})")
+
+        # Counter-intuitively, 'None' returns all available entities, both
+        # those from the filename and those from the sidecar metadata
+        return target.get_entities(metadata=None)
 
     @failIfEmpty
     def getEvents(self, matchExact: bool = False,
