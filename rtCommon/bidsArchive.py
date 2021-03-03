@@ -604,27 +604,6 @@ class BidsArchive:
                             f"(value 1: {value1}, value 2: {value2}")
                 return (False, errorMsg)
 
-        # These fields should not match between two images for a valid append
-        # (i.e., data should be different)
-        differentFields = [
-            "AcquisitionTime",  # should be collected at different times
-            "AcquisitionNumber",  # acquisition ID's should be different
-            ]
-
-        for field in differentFields:
-            value1 = meta1.get(field, None)
-            if value1 is None:
-                continue
-
-            value2 = meta2.get(field, None)
-            if value2 is None:
-                continue
-
-            if value1 == value2:
-                errorMsg = (f"Metadata matches (shouldn't) on field: {field} "
-                            f"(value 1: {value1}, value 2: {value2})")
-                return (False, errorMsg)
-
         return (True, "")
 
     def appendIncremental(self,

@@ -334,34 +334,6 @@ def testNiftiHeaderValidation(sample4DNifti1, sample3DNifti1, sample2DNifti1,
 def testMetadataValidation(imageMetadata, caplog):
     metadataCopy = imageMetadata.copy()
 
-    # Exact copies are not compatible as some metadata must be different
-    compatible, errorMsg = BidsArchive._metadataAppendCompatible(imageMetadata,
-                                                                 metadataCopy)
-    assert not compatible
-
-    # Any metadata that must be different and is the same results in a failure
-    differentFields = ['AcquisitionTime', 'AcquisitionNumber']
-    oldValues = [metadataCopy[field] for field in differentFields]
-    for field in differentFields:
-        metadataCopy[field] = float(metadataCopy[field]) + 1
-
-    for (field, oldValue) in zip(differentFields, oldValues):
-        metadataCopy[field] = oldValue
-
-        compatible, errorMsg = BidsArchive._metadataAppendCompatible(
-            imageMetadata,
-            metadataCopy)
-
-        assert not compatible
-        assert f"Metadata matches (shouldn't) on field: {field}" in errorMsg
-
-        metadataCopy[field] = float(oldValue) + 1
-
-    # Modify fields and ensure append now possible
-    for field in differentFields:
-        metadataCopy[field] = float(metadataCopy[field]) + 1
-    assert BidsArchive._metadataAppendCompatible(imageMetadata,
-                                                 metadataCopy)
     # Test failure on sample of fields that must be the same
     matchFields = ["Modality", "MagneticFieldStrength", "ImagingFrequency",
                    "Manufacturer", "ManufacturersModelName", "InstitutionName",
@@ -396,7 +368,7 @@ def testMetadataValidation(imageMetadata, caplog):
             metadataCopy[field] = oldValue
 
     # Test append-compatible when only one side has a particular metadata value
-    for field in (matchFields + differentFields):
+    for field in matchFields:
         for metadataDict in [imageMetadata, metadataCopy]:
             oldValue = metadataDict.pop(field, None)
             if oldValue is None:
