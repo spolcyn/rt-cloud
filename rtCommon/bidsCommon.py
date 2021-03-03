@@ -8,14 +8,13 @@ Shared constants and functions used by modules working with BIDS data.
 from enum import Enum
 import functools
 import logging
-import os
 import re
 from typing import Any, Callable
 
+from bids.layout.models import Config as BidsConfig
 import pydicom
 import nibabel as nib
 import numpy as np
-import yaml
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +46,7 @@ BIDS_FILE_PATH_PATTERN = BIDS_DIR_PATH_PATTERN + '/' + BIDS_FILE_PATTERN
 # actually exist in the BIDS Standard and that shouldn't be output in an archive
 PYBIDS_PSEUDO_ENTITIES = ['extension']
 
+
 # Valid extensions for various file types in the BIDS format
 class BidsFileExtension(Enum):
     IMAGE = '.nii'
@@ -65,16 +65,25 @@ class BidsEntityKeys(Enum):
 # See test file for more specifics about expected format
 @functools.lru_cache(maxsize=1)
 def loadBidsEntities() -> dict:
-    # Assumes that this file and entities.yaml are in the same directory
-    filename = "entities.yaml"
-    rtCommonDir = os.path.dirname(os.path.realpath(__file__))
-    filePath = os.path.join(rtCommonDir, filename)
+    """
+    Loads all accepted BIDS entities from PyBids into a dictionary.
 
-    with open(filePath, mode='r', encoding="utf-8") as entities_file:
-        loadedEntities = yaml.safe_load(entities_file)
+    Returns:
+        A dictionary mapping the entity names to the PyBids Entity object
+            containing information about that entity.
+    """
+    # PyBids uses its own, internal bids.json to configure what entities it
+    # accepts and what form they take. A custom config could be specified with a
+    # full path name, but using just 'bids' will direct the PyBids Config class
+    # to get the bids.json from its own internal package.
+    BIDS_DEFAULT_CONFIG_NAME = 'bids'
+    BIDS_DERIVATIES_CONFIG_NAME = 'derivatives'
 
-        logging.info("Loaded entities: %s", loadedEntities)
-        return loadedEntities
+    entities = {}
+    for configName in [BIDS_DEFAULT_CONFIG_NAME, BIDS_DERIVATIES_CONFIG_NAME]:
+        entities.update(BidsConfig.load(configName).entities)
+
+    return entities
 
 
 def filterEntities(metadata: dict) -> dict:
@@ -199,19 +208,12 @@ def metadataFromProtocolName(protocolName: str) -> dict:
     if not protocolName:
         return {}
 
-    prefix = "(?:(?<=_)|(?<=^))"  # match beginning of string or underscore
-    suffix = "(?:(?=_)|(?=$))"  # match end of string or underscore
-    fieldPat = "(?:{field}-)(.+?)"  # TODO(spolcyn): Document this regex
-    patternTemplate = prefix + fieldPat + suffix
-
     foundEntities = {}
-    for entityName, entityValueDict in loadBidsEntities().items():
-        entity = entityValueDict[BidsEntityKeys.ENTITY.value]
-        entitySearchPattern = patternTemplate.format(field=entity)
-        result = re.search(entitySearchPattern, protocolName)
+    for entity in loadBidsEntities().values():
+        result = re.search(entity.pattern, protocolName)
 
         if result is not None and len(result.groups()) == 1:
-            foundEntities[entityName] = result.group(1)
+            foundEntities[entity.name] = result.group(1)
 
     return foundEntities
 

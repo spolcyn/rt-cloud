@@ -89,21 +89,17 @@ def testEntitiesDictGeneration():
     entities = loadBidsEntities()
 
     # Ensure entity count correct
-    NUM_ENTITIES = 20  # Manually counted from the file entities.yaml
+    # Manually summed from bids.json and derivatives.json, which are on Github
+    # at bids-standard/pybids/bids/layout/config/
+    NUM_ENTITIES = 28
     assert len(entities) == NUM_ENTITIES
 
     # Ensure case correct
     for key in entities.keys():
         assert key.islower()
 
-    # Ensure expected values are present for each entity
-    expectedValueKeys = ["entity", "format", "description"]
-    for valueDict in entities.values():
-        for key in expectedValueKeys:
-            assert key in valueDict.keys()
-
     # Check a sample of important keys are present
-    importantKeySample = ["subject", "task", "session"]
+    importantKeySample = ["subject", "task", "session", "datatype"]
     for key in importantKeySample:
         assert key in entities.keys()
 
@@ -117,7 +113,7 @@ def testParseProtocolName():
     assert metadataFromProtocolName("still-aint_it") == {}
 
     protocolName = "func_ses-01_task-story_run-01"
-    expectedValues = {'session': '01', 'task': 'story', 'run': '01'}
+    expectedValues = {'session': '01', 'task': 'story', 'run': '1'}
 
     parsedValues = metadataFromProtocolName(protocolName)
 
