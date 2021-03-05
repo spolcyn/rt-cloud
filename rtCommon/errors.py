@@ -54,3 +54,17 @@ class NotImplementedError(RTError):
 class MissingMetadataError(RTError):
     """Required BIDS metadata missing"""
     pass
+
+
+class MetadataMismatchError(RTError):
+    """Mismatch in metadata (e.g., BIDS or NIfTI)"""
+    pass
+
+
+class DimensionError(RTError):
+    """Invalid image dimensions for requested operation"""
+    pass
+
+class QueryError(RTError):
+    """A query failed or returned unexpected results"""
+    pass
