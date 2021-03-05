@@ -2,8 +2,6 @@ from copy import deepcopy
 import logging
 import os
 import pickle
-import shutil
-import tempfile
 
 from bids.layout import BIDSImageFile
 from bids.layout.writing import build_path as bids_build_path
@@ -16,11 +14,13 @@ import pytest
 from rtCommon.bidsCommon import (
     BIDS_DIR_PATH_PATTERN,
     BIDS_FILE_PATTERN,
+    PYBIDS_PSEUDO_ENTITIES,
     BidsFileExtension,
     getNiftiData,
     metadataFromProtocolName,
 )
 from rtCommon.bidsIncremental import BidsIncremental
+from rtCommon.bidsArchive import BidsArchive
 from rtCommon.errors import MissingMetadataError
 
 logger = logging.getLogger(__name__)
@@ -351,13 +351,15 @@ def testArchivePathConstruction(validBidsI, imageMetadata):
 
 # Test that writing the BIDS-I to disk returns a properly formatted BIDS archive
 # in the correct location with all the data in the BIDS-I
-def testDiskOutput(validBidsI):
+def testDiskOutput(validBidsI, tmpdir):
     # Write the archive
-    datasetRoot = os.path.join(tempfile.gettempdir(), "bids-pytest-dataset")
+    datasetRoot = os.path.join(tmpdir, "bids-pytest-dataset")
     validBidsI.writeToDisk(datasetRoot)
 
     # Validate the BIDS-compliance of each path (relative to dataset root) of
     # every file in the archive
+    # TODO(spolcyn): Run the full, node-based bids-validator automatically on
+    # the output
     validator = BIDSValidator()
     for dirPath, _, filenames in os.walk(datasetRoot):
         for f in filenames:
@@ -365,8 +367,18 @@ def testDiskOutput(validBidsI):
             fname = fname.replace(datasetRoot, "")
             assert validator.is_bids(fname)
 
-    # Cleanup temp directory if test succeeded; leave for inspection otherwise
-    shutil.rmtree(datasetRoot)
+    # Validate the output can be opened by BidsArchive and verified against the
+    # source BIDS-Incremental
+    archive = BidsArchive(datasetRoot)
+    archiveImage = archive.getImages()[0]
+
+    # Remove pseudo entities to avoid conflict with the validBidsI
+    metadata = archive.getSidecarMetadata(archiveImage, onlySidecar=False)
+    for entity in PYBIDS_PSEUDO_ENTITIES:
+        metadata.pop(entity)
+
+    incrementalFromArchive = BidsIncremental(archiveImage, metadata)
+    assert incrementalFromArchive == validBidsI
 
 
 # Test serialization results in equivalent BIDS-I object

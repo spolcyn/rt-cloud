@@ -215,7 +215,8 @@ def testGetMetadata(bidsArchive3D, imageMetadata):
     # all entities in imageMetadata should be returned
     EXTENSION = '.nii'
     returnedMeta = bidsArchive3D.getSidecarMetadata(
-        bids_build_path(imageMetadata, BIDS_FILE_PATH_PATTERN) + EXTENSION)
+        bids_build_path(imageMetadata, BIDS_FILE_PATH_PATTERN) + EXTENSION,
+        onlySidecar=False)
     imageMetadata['extension'] = EXTENSION
     imageMetadata['datatype'] = 'func'
 

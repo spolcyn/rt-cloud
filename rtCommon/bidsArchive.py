@@ -58,7 +58,6 @@ def failIfEmpty(func):
 
 
 class BidsArchive:
-
     def __init__(self, rootPath: str):
         """
         BidsArchive represents a BIDS-formatted dataset on disk. It offers an
@@ -318,7 +317,7 @@ class BidsArchive:
 
     @failIfEmpty
     def getSidecarMetadata(self, image: Union[str, BIDSImageFile],
-                           includeEntities: bool = True) -> dict:
+                           onlySidecar: bool = True) -> dict:
         """
         Get metadata for the file at the provided path in the dataset. Sidecar
         metadata is always returned, and BIDS entities present in the filename
@@ -327,9 +326,9 @@ class BidsArchive:
         Args:
             image: Path or BIDSImageFile pointing to the image file to get
                 metadata for.
-            includeEntities: True to include the entities in the filename (e.g.,
-                'subject', 'task', and 'session'), False to include only the
-                metadata in sidecar files. Defaults to True.
+            onlySidecar: True to return only the metadata in sidecar JSON files.
+                False to additionally include the entities in the filename
+                (e.g., 'subject', 'task', and 'session'). Defaults to True.
 
         Raises:
             TypeError: If image is not a str or BIDSImageFile.
@@ -354,9 +353,15 @@ class BidsArchive:
             raise TypeError("Expected image as str or BIDSImageFile "
                             f"(got {type(image)})")
 
-        # Counter-intuitively, 'None' returns all available entities, both
-        # those from the filename and those from the sidecar metadata
-        return target.get_entities(metadata=None)
+        # Counter-intuitively, in PyBids, 'None' returns all available entities,
+        # both those from the filename and those from the sidecar metadata. True
+        # returns only the metadata in the sidecar file, and False returns only
+        # entities in the filename.
+        metadataParameter = None
+        if onlySidecar:
+            metadataParameter = True
+
+        return target.get_entities(metadata=metadataParameter)
 
     @failIfEmpty
     def getEvents(self, matchExact: bool = False,
@@ -697,12 +702,9 @@ class BidsArchive:
                     raise MetadataMismatchError(
                         "NIfTI headers not append compatible: " + errorMsg)
 
-                # TODO(spolcyn): Optimize this and getSidecarMetadata to use the
-                # already-retrieved BIDS imageFile rather than doing another
-                # search with the file path
                 compatible, errorMsg = self._metadataAppendCompatible(
                     incremental.imageMetadata,
-                    self.getSidecarMetadata(imgPath))
+                    self.getSidecarMetadata(imageFile))
                 if not compatible:
                     raise MetadataMismatchError(
                         "Image metadata not append compatible: " + errorMsg)
@@ -824,8 +826,8 @@ class BidsArchive:
         else:
             raise DimensionError("Expected image to have 3 or 4 dimensions "
                                  f"(got {nDimensions})")
+        metadata = self.getSidecarMetadata(candidate, onlySidecar=False)
 
-        metadata = self.data.get_metadata(candidate.path, include_entities=True)
         # BIDS-I should only be given official entities used in a BIDS Archive
         for pseudoEntity in PYBIDS_PSEUDO_ENTITIES:
             metadata.pop(pseudoEntity)
