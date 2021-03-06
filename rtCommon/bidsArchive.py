@@ -101,11 +101,19 @@ class BidsArchive:
         originalAttr = attr
 
         # If the attr is in the format getXyz, convert to get_xyz for forwarding
-        # to the BIDSLayout object
-        pattern = re.compile("get[A-Z][a-z]+")
-        if pattern.match(attr) is not None:
-            attr = attr.lower()
-            attr = attr[0:3] + '_' + attr[3:]
+        # to the BIDSLayout object However, Some requests shouldn't be
+        # auto-forwarded, even if they're in the right form.
+        # List:
+        # getMetadata: Too similar to getImageMetadata, users may accidentally
+        #     call getMetadata which forwards to get_metadata and has different
+        #     behavior than getImageMetadata
+        excludedAttributes = ['getMetadata']
+
+        if attr not in excludedAttributes:
+            pattern = re.compile("get[A-Z][a-z]+")
+            if pattern.match(attr) is not None:
+                attr = attr.lower()
+                attr = attr[0:3] + '_' + attr[3:]
 
         if not self.isEmpty():
             try:
@@ -317,7 +325,7 @@ class BidsArchive:
 
     @failIfEmpty
     def getImageMetadata(self, image: Union[str, BIDSImageFile],
-                           onlySidecar: bool = False) -> dict:
+                         onlySidecar: bool = False) -> dict:
         """
         Get metadata for the file at the provided path in the dataset. Sidecar
         metadata is always returned, and BIDS entities present in the filename
