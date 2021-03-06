@@ -19,6 +19,7 @@ from rtCommon.bidsCommon import (
     BidsFileExtension,
     filterEntities,
     getNiftiData,
+    loadBidsEntities,
     symmetricDictDifference,
 )
 from tests.common import isValidBidsArchive
@@ -201,7 +202,7 @@ def testFailEmpty(tmpdir):
         emptyArchive.dirExistsInArchive("will fail anyway")
         emptyArchive.getImages("will fail anyway")
         emptyArchive.addImage(None, "will fall anyway")
-        emptyArchive.getSidecarMetadata("will fall anyway")
+        emptyArchive.getImageMetadata("will fall anyway")
         emptyArchive.addMetadata({"will": "fail"}, "will fall anyway")
         emptyArchive.getIncremental(subject="will fall anyway",
                                     session="will fall anyway",
@@ -211,22 +212,30 @@ def testFailEmpty(tmpdir):
 
 
 # Test getting metadata from the archive
-def testGetMetadata(bidsArchive3D, imageMetadata):
+def testGetSidecarMetadata(bidsArchive3D, imageMetadata):
     # all entities in imageMetadata should be returned
     EXTENSION = '.nii'
-    returnedMeta = bidsArchive3D.getSidecarMetadata(
+    returnedMeta = bidsArchive3D.getImageMetadata(
         bids_build_path(imageMetadata, BIDS_FILE_PATH_PATTERN) + EXTENSION,
-        onlySidecar=False)
-    imageMetadata['extension'] = EXTENSION
-    imageMetadata['datatype'] = 'func'
+        onlySidecar=True)
+
+    # 'TaskName' is parsed from 'task' by BIDS-I when being created, before an
+    # append, so it's not in the default imageMetadata test fixture
+    imageMetadata['TaskName'] = imageMetadata['task']
 
     diff = symmetricDictDifference(returnedMeta, imageMetadata, opeq)
+
+    # Remove the file-name entities from comparison, as we're only concerned
+    # about the sidecar metadata
+    bidsEntities = loadBidsEntities()
+    diff = {key: diff[key] for key in diff.keys() if key not in bidsEntities}
+
     assert diff == {}
 
     invalidValues = [5, ["path1", "path2"]]
     for v in invalidValues:
         with pytest.raises(TypeError):
-            bidsArchive3D.getSidecarMetadata(v)
+            bidsArchive3D.getImageMetadata(v)
 
 
 # Test getting an event file from the archive
@@ -417,8 +426,11 @@ def test3DAppend(bidsArchive3D, validBidsI, imageMetadata):
     # Dimensions should have increased by size of BIDS-I
     dimensions = image.header['dim']
     assert dimensions[0] == 4  # 4-D NIfTI now
+    # First 3 dimensions should remain same as before, only time (4th) dimension
+    # should change
     assert np.array_equal(dimensions[1:3], validBidsI.imageHeader['dim'][1:3])
-    # 1 slice from previous image + however many the BIDS-I image has
+    # Number of time dimensions should now be 1 (from previous image) + however
+    # many images the BIDS-I volume has
     assert dimensions[4] == 1 + validBidsI.imageDimensions[3]
 
     # Time dimension (4th) should now contain the TR length
@@ -535,7 +547,7 @@ def testGetIncremental(bidsArchive3D, bidsArchive4D, sample3DNifti1,
             task=imageMetadata["task"],
             suffix=imageMetadata["suffix"],
             datatype="func",
-            sliceIndex=index,
+            imageIndex=index,
             session=imageMetadata["session"])
 
         assert len(incremental.imageDimensions) == 4
@@ -599,20 +611,20 @@ def testGetIncrementalNoMatchingMetadata(bidsArchive4D, imageMetadata, caplog,
             session=imageMetadata["session"])
 
 
-# Test get incremental with an out-of-bounds slice index for the matching image
+# Test get incremental with an out-of-bounds image index for the matching image
 # (could be either non-0 for 3D or beyond bounds for a 4D)
-def testGetIncrementalSliceIndexOutOfBounds(bidsArchive3D, bidsArchive4D,
+def testGetIncrementalImageIndexOutOfBounds(bidsArchive3D, bidsArchive4D,
                                             imageMetadata, caplog):
     # Negative case
     outOfBoundsIndex = -1
-    errorMsg = fr"Slice index must be >= 0 \(got {outOfBoundsIndex}\)"
+    errorMsg = fr"Image index must be >= 0 \(got {outOfBoundsIndex}\)"
     with pytest.raises(IndexError, match=errorMsg):
         incremental = bidsArchive3D.getIncremental(
             subject=imageMetadata["subject"],
             task=imageMetadata["task"],
             suffix=imageMetadata["suffix"],
             datatype="func",
-            sliceIndex=outOfBoundsIndex,
+            imageIndex=outOfBoundsIndex,
             session=imageMetadata["session"])
 
         assert incremental is None
@@ -627,7 +639,7 @@ def testGetIncrementalSliceIndexOutOfBounds(bidsArchive3D, bidsArchive4D,
             task=imageMetadata["task"],
             suffix=imageMetadata["suffix"],
             datatype="func",
-            sliceIndex=outOfBoundsIndex,
+            imageIndex=outOfBoundsIndex,
             session=imageMetadata["session"])
 
         assert incremental is None
@@ -643,7 +655,7 @@ def testGetIncrementalSliceIndexOutOfBounds(bidsArchive3D, bidsArchive4D,
             task=imageMetadata["task"],
             suffix=imageMetadata["suffix"],
             datatype="func",
-            sliceIndex=outOfBoundsIndex,
+            imageIndex=outOfBoundsIndex,
             session=imageMetadata["session"])
 
         assert incremental is None

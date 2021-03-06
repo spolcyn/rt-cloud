@@ -316,8 +316,8 @@ class BidsArchive:
         return (self.data is None)
 
     @failIfEmpty
-    def getSidecarMetadata(self, image: Union[str, BIDSImageFile],
-                           onlySidecar: bool = True) -> dict:
+    def getImageMetadata(self, image: Union[str, BIDSImageFile],
+                           onlySidecar: bool = False) -> dict:
         """
         Get metadata for the file at the provided path in the dataset. Sidecar
         metadata is always returned, and BIDS entities present in the filename
@@ -326,9 +326,10 @@ class BidsArchive:
         Args:
             image: Path or BIDSImageFile pointing to the image file to get
                 metadata for.
-            onlySidecar: True to return only the metadata in sidecar JSON files.
-                False to additionally include the entities in the filename
-                (e.g., 'subject', 'task', and 'session'). Defaults to True.
+            onlySidecar: True to return only the metadata in the image's sidecar
+                JSON files.  False to additionally include the entities in the
+                filename (e.g., 'subject', 'task', and 'session'). Defaults to
+                False.
 
         Raises:
             TypeError: If image is not a str or BIDSImageFile.
@@ -340,7 +341,7 @@ class BidsArchive:
         Examples:
             >>> archive = BidsArchive('/path/to/archive')
             >>> path = archive.getImages()[0].path
-            >>> archive.getSidecarMetadata(path)
+            >>> archive.getImageMetadata(path)
             {'AcquisitionMatrixPE': 320, 'AcquisitionNumber': 1, ... }
         """
         if isinstance(image, BIDSImageFile):
@@ -704,7 +705,7 @@ class BidsArchive:
 
                 compatible, errorMsg = self._metadataAppendCompatible(
                     incremental.imageMetadata,
-                    self.getSidecarMetadata(imageFile))
+                    self.getImageMetadata(imageFile))
                 if not compatible:
                     raise MetadataMismatchError(
                         "Image metadata not append compatible: " + errorMsg)
@@ -751,13 +752,13 @@ class BidsArchive:
         return False
 
     @failIfEmpty
-    def getIncremental(self, sliceIndex: int = 0, **entities) \
+    def getIncremental(self, imageIndex: int = 0, **entities) \
             -> BidsIncremental:
         """
         Creates a BIDS Incremental from the specified part of the archive.
 
         Args:
-            sliceIndex: Index of 3-D image to select in a 4-D image volume.
+            imageIndex: Index of 3-D image to select in a 4-D image volume.
             entities: Keyword arguments for entities to filter by. Provide in
                 the format entity='value'.
 
@@ -766,8 +767,8 @@ class BidsArchive:
             its associated metadata.
 
         Raises:
-            IndexError: If the provided sliceIndex goes beyond the bounds of the
-                image specified in the archive.
+            IndexError: If the provided imageIndex goes beyond the bounds of the
+                volume specified in the archive.
             MissingMetadataError: If the archive lacks the required metadata to
                 make a BIDS Incremental out of an image in the archive.
             NoMatchError: When no images that match the provided entities are
@@ -787,9 +788,12 @@ class BidsArchive:
             True
             >>> inc.imageDimensions
             (64, 64, 27, 1)
+            >>> inc3 = archive.getIncremental(imageIndex=1, **entityFilterDict)
+            >>> inc2 == inc3
+            False
         """
-        if sliceIndex < 0:
-            raise IndexError(f"Slice index must be >= 0 (got {sliceIndex})")
+        if imageIndex < 0:
+            raise IndexError(f"Image index must be >= 0 (got {imageIndex})")
 
         candidates = self.getImages(**entities)
 
@@ -806,27 +810,28 @@ class BidsArchive:
         candidate = candidates[0]
         image = candidate.get_image()
 
-        # Process error conditions and slice image if necessary
+        # Process error conditions and extract image from volume if necessary
         nDimensions = len(image.dataobj.shape)
         if nDimensions == 3:
-            if sliceIndex != 0:
-                raise IndexError(f"Matching image was a 3-D NIfTI; {sliceIndex}"
+            if imageIndex != 0:
+                raise IndexError(f"Matching image was a 3-D NIfTI; {imageIndex}"
                                  f" too high for a 3-D NIfTI (must be 0)")
         elif nDimensions == 4:
-            numSlices = image.dataobj.shape[3]
+            numImages = image.dataobj.shape[3]
 
-            if sliceIndex < numSlices:
-                image = image.__class__(image.dataobj[..., sliceIndex],
+            if imageIndex < numImages:
+                # Directly slice Nibabel dataobj for increased memory efficiency
+                image = image.__class__(image.dataobj[..., imageIndex],
                                         affine=image.affine,
                                         header=image.header)
                 image.update_header()
             else:
-                raise IndexError(f"Image index {sliceIndex} too large for NIfTI"
-                                 f" volume of length {numSlices}")
+                raise IndexError(f"Image index {imageIndex} too large for NIfTI"
+                                 f" volume of length {numImages}")
         else:
             raise DimensionError("Expected image to have 3 or 4 dimensions "
                                  f"(got {nDimensions})")
-        metadata = self.getSidecarMetadata(candidate, onlySidecar=False)
+        metadata = self.getImageMetadata(candidate)
 
         # BIDS-I should only be given official entities used in a BIDS Archive
         for pseudoEntity in PYBIDS_PSEUDO_ENTITIES:

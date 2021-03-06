@@ -373,7 +373,7 @@ def testDiskOutput(validBidsI, tmpdir):
     archiveImage = archive.getImages()[0]
 
     # Remove pseudo entities to avoid conflict with the validBidsI
-    metadata = archive.getSidecarMetadata(archiveImage, onlySidecar=False)
+    metadata = archive.getImageMetadata(archiveImage, onlySidecar=False)
     for entity in PYBIDS_PSEUDO_ENTITIES:
         metadata.pop(entity)
 
