@@ -70,6 +70,18 @@ def testInvalidConstruction(sample2DNifti1, sample4DNifti1, imageMetadata):
         assert ("Image must be one of [nib.Nifti1Image, nib.Nifti2Image, "
                f"BIDSImageFile (got {type(notImage)})" in str(err.value))
 
+    # Test non-functional data
+    with pytest.raises(NotImplementedError) as err:
+        original = imageMetadata['datatype']
+        invalidType = 'anat'
+        imageMetadata['datatype'] = invalidType
+        BidsIncremental(image=sample4DNifti1,
+                        imageMetadata=imageMetadata)
+        imageMetadata['datatype'] = original
+
+        assert ("BIDS Incremental for BIDS datatypes other than 'func' is not "
+                f"yet implemented (got '{invalidType}')") in str(err.value)
+
 
 # Test that valid arguments produce a BIDS incremental
 def testValidConstruction(sample3DNifti1, sample3DNifti2,

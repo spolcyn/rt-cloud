@@ -117,6 +117,9 @@ class BidsIncremental:
         # Remove singleton dimensions
         image = nib.funcs.squeeze_image(image)
 
+        # BIDS-I is currently used for BOLD data, and according to the BIDS
+        # Standard, BOLD data must be in 4-D NIfTI files. Thus, upgrade 3-D to
+        # 4-D images with singleton final dimension, if necessary.
         imageShape = image.header.get_data_shape()
         if len(imageShape) < 3:
             raise ValueError("Image must have at least 3 dimensions")
@@ -288,6 +291,12 @@ class BidsIncremental:
         Returns:
             Metadata dictionary with derived fields set.
         """
+        # Ensure datatype is 'func'
+        if imageMetadata['datatype'] != 'func':
+            raise NotImplementedError("BIDS Incremental for BIDS datatypes "
+                                      "other than 'func' is not yet implemented"
+                                      f" (got '{imageMetadata['datatype']}')")
+
         # TaskName is required BIDS metadata that can be derived from the
         # required field, 'task'
         imageMetadata["TaskName"] = imageMetadata["task"]
