@@ -26,9 +26,10 @@ ALL_TEST_FILE_PATHS = [test_3DNifti1Path, test_3DNifti2Path,
 def haveAllNiftiTestFiles():
     for path in ALL_TEST_FILE_PATHS:
         if not os.path.exists(path):
-            logger.warning("Don't have: %s", path)
+            logger.warning("Don't have required test file: %s", path)
             return False
 
+    return True
 
 def deleteNiftiTestFiles():
     """
