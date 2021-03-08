@@ -22,6 +22,7 @@ from rtCommon.bidsCommon import (
 from rtCommon.bidsIncremental import BidsIncremental
 from rtCommon.bidsArchive import BidsArchive
 from rtCommon.errors import MissingMetadataError
+from tests.common import isValidBidsArchive
 
 logger = logging.getLogger(__name__)
 
@@ -391,6 +392,8 @@ def testDiskOutput(validBidsI, tmpdir):
 
     incrementalFromArchive = BidsIncremental(archiveImage, metadata)
     assert incrementalFromArchive == validBidsI
+
+    assert isValidBidsArchive(archive.rootPath)
 
 
 # Test serialization results in equivalent BIDS-I object

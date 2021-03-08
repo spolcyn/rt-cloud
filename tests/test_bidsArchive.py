@@ -108,6 +108,8 @@ def incrementAcquisitionValues(incremental: BidsIncremental) -> None:
             previousValue = float(previousValue)
             incremental.setMetadataField(field, previousValue + increment)
 
+""" ----- END HELPERS ----- """
+
 
 """ ----- BEGIN TEST ARCHIVE QUERYING ----- """
 
@@ -129,13 +131,13 @@ def testStringOutput(bidsArchive4D):
     assert re.fullmatch(outPattern, str(bidsArchive4D)) is not None
 
 
-# Test creating archive without a path
+# Test creating bidsArchive object in an empty directory
 def testEmptyArchiveCreation(tmpdir):
     datasetRoot = Path(tmpdir, "bids-archive")
     assert BidsArchive(datasetRoot) is not None
 
 
-# Test empty determiniation
+# Test empty check
 def testIsEmpty(tmpdir, bidsArchive4D):
     datasetRoot = Path(tmpdir, "bids-archive")
     archive = BidsArchive(datasetRoot)
@@ -449,10 +451,9 @@ def test3DAppend(bidsArchive3D, validBidsI, imageMetadata):
     assert image.header['xyzt_units'] == 10
 
 """
-# Test appending raises error if no already existing image to append to and
+
+# Test appending changes nothing if no already existing image to append to and
 # specified not to create path
-
-
 def testAppendNoMakePath(bidsArchive4D, validBidsI, tmpdir):
     # Append to empty archive specifying not to make any files or directories
     datasetRoot = Path(tmpdir, testEmptyArchiveAppend.__name__)
@@ -493,6 +494,7 @@ def test4DAppend(bidsArchive4D, validBidsI, imageMetadata):
 
     assert archiveHasMetadata(bidsArchive4D, imageMetadata)
     assert appendDataMatches(bidsArchive4D, validBidsI, startIndex=2)
+    assert isValidBidsArchive(bidsArchive4D.rootPath)
 
 
 # Test images are correctly appended to an archive with a 4-D sequence in it
@@ -513,6 +515,7 @@ def testSequenceAppend(bidsArchive4D, validBidsI, imageMetadata):
     assert archiveHasMetadata(bidsArchive4D, imageMetadata)
     assert appendDataMatches(bidsArchive4D, validBidsI,
                              startIndex=2, endIndex=4)
+    assert isValidBidsArchive(bidsArchive4D.rootPath)
 
 
 # Test appending a new subject (and thus creating a new directory) to a
@@ -526,6 +529,7 @@ def testAppendNewSubject(bidsArchive4D, validBidsI):
     assert len(bidsArchive4D.getSubjects()) == len(preSubjects) + 1
 
     assert appendDataMatches(bidsArchive4D, validBidsI)
+    assert isValidBidsArchive(bidsArchive4D.rootPath)
 
 
 """ ----- BEGIN TEST IMAGE STRIPPING ----- """
