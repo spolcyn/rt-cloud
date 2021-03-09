@@ -101,11 +101,19 @@ class BidsArchive:
         originalAttr = attr
 
         # If the attr is in the format getXyz, convert to get_xyz for forwarding
-        # to the BIDSLayout object
-        pattern = re.compile("get[A-Z][a-z]+")
-        if pattern.match(attr) is not None:
-            attr = attr.lower()
-            attr = attr[0:3] + '_' + attr[3:]
+        # to the BIDSLayout object However, Some requests shouldn't be
+        # auto-forwarded, even if they're in the right form.
+        # List:
+        # getMetadata: Too similar to getSidecarMetadata, users may accidentally
+        #     call getMetadata which forwards to get_metadata and has different
+        #     behavior than getSidecarMetadata
+        excludedAttributes = ['getMetadata']
+
+        if attr not in excludedAttributes:
+            pattern = re.compile("get[A-Z][a-z]+")
+            if pattern.match(attr) is not None:
+                attr = attr.lower()
+                attr = attr[0:3] + '_' + attr[3:]
 
         if not self.isEmpty():
             try:
@@ -317,7 +325,7 @@ class BidsArchive:
 
     @failIfEmpty
     def getSidecarMetadata(self, image: Union[str, BIDSImageFile],
-                           onlySidecar: bool = True) -> dict:
+                         includeEntities: bool = True) -> dict:
         """
         Get metadata for the file at the provided path in the dataset. Sidecar
         metadata is always returned, and BIDS entities present in the filename
@@ -326,9 +334,10 @@ class BidsArchive:
         Args:
             image: Path or BIDSImageFile pointing to the image file to get
                 metadata for.
-            onlySidecar: True to return only the metadata in sidecar JSON files.
-                False to additionally include the entities in the filename
-                (e.g., 'subject', 'task', and 'session'). Defaults to True.
+            includeEntities: False to return only the metadata in the image's
+                sidecar JSON files.  True to additionally include the entities
+                in the filename (e.g., 'subject', 'task', and 'session').
+                Defaults to True.
 
         Raises:
             TypeError: If image is not a str or BIDSImageFile.
@@ -357,9 +366,7 @@ class BidsArchive:
         # both those from the filename and those from the sidecar metadata. True
         # returns only the metadata in the sidecar file, and False returns only
         # entities in the filename.
-        metadataParameter = None
-        if onlySidecar:
-            metadataParameter = True
+        metadataParameter = None if includeEntities else True
 
         return target.get_entities(metadata=metadataParameter)
 
@@ -712,17 +719,16 @@ class BidsArchive:
             # Ensure archive image is 4D, expanding if not
             archiveData = getNiftiData(archiveImg)
             nDimensions = len(archiveData.shape)
-            if nDimensions == 3:
-                archiveData = np.expand_dims(archiveData, 3)
-                correct3DHeaderTo4D(archiveImg, incremental.getMetadataField(
-                    "RepetitionTime"))
-            elif nDimensions == 4:
-                pass
-            else:
+            if nDimensions < 3 or nDimensions > 4:
                 # RT-Cloud assumes 3D or 4D NIfTI images, other sizes have
                 # unknown interpretations
                 raise DimensionError("Expected image to have 3 or 4 dimensions "
                                      f"(got {nDimensions})")
+
+            if nDimensions == 3:
+                archiveData = np.expand_dims(archiveData, 3)
+                correct3DHeaderTo4D(archiveImg, incremental.getMetadataField(
+                    "RepetitionTime"))
 
             # Create the new, combined image to replace the old one
             # TODO(spolcyn): Replace this with Nibabel's concat_images function
@@ -751,13 +757,13 @@ class BidsArchive:
         return False
 
     @failIfEmpty
-    def getIncremental(self, sliceIndex: int = 0, **entities) \
+    def getIncremental(self, imageIndex: int = 0, **entities) \
             -> BidsIncremental:
         """
         Creates a BIDS Incremental from the specified part of the archive.
 
         Args:
-            sliceIndex: Index of 3-D image to select in a 4-D image volume.
+            imageIndex: Index of 3-D image to select in a 4-D image volume.
             entities: Keyword arguments for entities to filter by. Provide in
                 the format entity='value'.
 
@@ -766,8 +772,8 @@ class BidsArchive:
             its associated metadata.
 
         Raises:
-            IndexError: If the provided sliceIndex goes beyond the bounds of the
-                image specified in the archive.
+            IndexError: If the provided imageIndex goes beyond the bounds of the
+                volume specified in the archive.
             MissingMetadataError: If the archive lacks the required metadata to
                 make a BIDS Incremental out of an image in the archive.
             NoMatchError: When no images that match the provided entities are
@@ -785,11 +791,19 @@ class BidsArchive:
             >>> inc2 = archive.getIncremental(**entityFilterDict)
             >>> inc == inc2
             True
+
+            By default, getIncremental has an imageIndex of 0. Changing that
+            parameter will return a different 3-D image from the volume, using
+            the same search metadata.
+
             >>> inc.imageDimensions
             (64, 64, 27, 1)
+            >>> inc3 = archive.getIncremental(imageIndex=1, **entityFilterDict)
+            >>> inc2 != inc3
+            True
         """
-        if sliceIndex < 0:
-            raise IndexError(f"Slice index must be >= 0 (got {sliceIndex})")
+        if imageIndex < 0:
+            raise IndexError(f"Image index must be >= 0 (got {imageIndex})")
 
         candidates = self.getImages(**entities)
 
@@ -806,27 +820,28 @@ class BidsArchive:
         candidate = candidates[0]
         image = candidate.get_image()
 
-        # Process error conditions and slice image if necessary
+        # Process error conditions and extract image from volume if necessary
         nDimensions = len(image.dataobj.shape)
         if nDimensions == 3:
-            if sliceIndex != 0:
-                raise IndexError(f"Matching image was a 3-D NIfTI; {sliceIndex}"
+            if imageIndex != 0:
+                raise IndexError(f"Matching image was a 3-D NIfTI; {imageIndex}"
                                  f" too high for a 3-D NIfTI (must be 0)")
         elif nDimensions == 4:
-            numSlices = image.dataobj.shape[3]
+            numImages = image.dataobj.shape[3]
 
-            if sliceIndex < numSlices:
-                image = image.__class__(image.dataobj[..., sliceIndex],
+            if imageIndex < numImages:
+                # Directly slice Nibabel dataobj for increased memory efficiency
+                image = image.__class__(image.dataobj[..., imageIndex],
                                         affine=image.affine,
                                         header=image.header)
                 image.update_header()
             else:
-                raise IndexError(f"Image index {sliceIndex} too large for NIfTI"
-                                 f" volume of length {numSlices}")
+                raise IndexError(f"Image index {imageIndex} too large for NIfTI"
+                                 f" volume of length {numImages}")
         else:
             raise DimensionError("Expected image to have 3 or 4 dimensions "
                                  f"(got {nDimensions})")
-        metadata = self.getSidecarMetadata(candidate, onlySidecar=False)
+        metadata = self.getSidecarMetadata(candidate)
 
         # BIDS-I should only be given official entities used in a BIDS Archive
         for pseudoEntity in PYBIDS_PSEUDO_ENTITIES:

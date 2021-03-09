@@ -35,9 +35,14 @@ test_4DNifti2Path = os.path.join(test_inputDirPath, test_nifti2_4DFile)
 
 
 def isValidBidsArchive(archivePath: str, logFullOutput: bool = False) -> bool:
-    binary_path = subprocess.run(['which', 'bids-validator'],
-                                 stdout=subprocess.PIPE).stdout.decode('utf-8')
-    binary_path = binary_path.strip()
+    result = subprocess.run(['which', 'bids-validator'], stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT)
+    if result.returncode != 0:
+        raise FileNotFoundError("Failed to find path to bids-validator binary. "
+                                "Ensure bids-validator is installed globally. "
+                                "(run 'npm install -g bids-validator')")
+
+    binary_path = result.stdout.decode('utf-8').strip()
 
     cmd = [str(binary_path),  '--json', archivePath]
     result = subprocess.run(cmd, stdout=subprocess.PIPE)

@@ -114,18 +114,29 @@ class BidsIncremental:
             self.datasetMetadata = deepcopy(datasetMetadata)
 
         """ Validate and store image """
-        # Remove singleton dimensions
+        # Remove singleton dimensions past the 3rd dimension
+        # Note: this function does not remove trailing 1's if the image is 3-D,
+        # (i.e., 160x160x1 image will retain that shape), so a later check is
+        # needed to ensure that the 3rd dimension is > 1
         image = nib.funcs.squeeze_image(image)
 
-        imageShape = image.header.get_data_shape()
+        # BIDS-I is currently used for BOLD data, and according to the BIDS
+        # Standard, BOLD data must be in 4-D NIfTI files. Thus, upgrade 3-D to
+        # 4-D images with singleton final dimension, if necessary.
+        imageShape = image.shape
         if len(imageShape) < 3:
             raise ValueError("Image must have at least 3 dimensions")
         elif len(imageShape) == 3:
+            if imageShape[2] <= 1:
+                raise ValueError("Image's 3rd (and any higher) dimensions are "
+                                 " <= 1, which means it is a 2D image; images "
+                                 "must have at least 3 dimensions")
+
             newData = np.expand_dims(getNiftiData(image), -1)
             image = image.__class__(newData, image.affine, image.header)
             correct3DHeaderTo4D(image, self._imgMetadata['RepetitionTime'])
 
-        assert len(image.header.get_data_shape()) == 4
+        assert len(image.shape) == 4
 
         self.image = image
 
@@ -288,6 +299,12 @@ class BidsIncremental:
         Returns:
             Metadata dictionary with derived fields set.
         """
+        # Ensure datatype is 'func'
+        if imageMetadata['datatype'] != 'func':
+            raise NotImplementedError("BIDS Incremental for BIDS datatypes "
+                                      "other than 'func' is not yet implemented"
+                                      f" (got '{imageMetadata['datatype']}')")
+
         # TaskName is required BIDS metadata that can be derived from the
         # required field, 'task'
         imageMetadata["TaskName"] = imageMetadata["task"]

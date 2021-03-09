@@ -8,6 +8,7 @@ from random import randint
 
 from bids.layout.writing import build_path as bids_build_path
 import nibabel as nib
+import pandas as pd
 import pydicom
 import pytest
 
@@ -108,8 +109,17 @@ def sample2DNifti1():
     newData = getNiftiData(nifti)
     # max positive value of 2 byte, signed short used in Nifti header for
     # storing dimension information
-    newData = newData.flatten()[:2**15 - 1]
+    newData = (newData.flatten()[:10000]).reshape((100, 100))
     return nib.Nifti1Image(newData, nifti.affine)
+
+
+# A NIfTI image that is technically 4-D, but actually is only 2-D (i.e., it's
+# header has 4 dimensions, but the last two are 1's)
+@pytest.fixture
+def samplePseudo2DNifti1(sample2DNifti1):
+    data = getNiftiData(sample2DNifti1)
+    data = data.reshape((data.shape[0], data.shape[1], 1, 1))
+    return nib.Nifti1Image(data, sample2DNifti1.affine)
 
 
 # 3-D NIfTI 1 image derived from the test DICOM image
@@ -161,7 +171,6 @@ def archiveWithImage(image, metadata: dict, tmpdir):
     """
     Create an archive on disk by hand with the provided image and metadata
     """
-
     # Create ensured empty directory
     while True:
         id = str(randint(0, 1e6))
@@ -184,35 +193,62 @@ def archiveWithImage(image, metadata: dict, tmpdir):
     metadataPath = Path(dataPath, filenamePrefix + '.json')
 
     nib.save(image, str(imagePath))
+
+    # BIDS-I's takes care of this automatically, but must be done manually here
+    metadata['TaskName'] = metadata['task']
     metadataPath.write_text(json.dumps(metadata))
+    del metadata['TaskName']
+
+    # BIDS-I's takes care of event file creation automatically, but must be done
+    # manually here
+    metadata['suffix'] = 'events'
+    metadata['extension'] = '.tsv'
+
+    eventsPath = Path(dataPath, bids_build_path(metadata, BIDS_FILE_PATTERN))
+    with open(eventsPath, mode='w') as eventsFile:
+        eventDefaultHeaders = ['onset', 'duration', 'response_time']
+        pd.DataFrame(columns=eventDefaultHeaders).to_csv(eventsFile, sep='\t')
 
     # Create an archive from the directory and return it
     return BidsArchive(rootPath)
 
 
-# BIDS Archive with a single 3-D image
+"""
+TODO(spolcyn): Support anatomical data in BIDS-I and get anatomical input DICOM
+# BIDS Archive with a single 3-D image (anatomical, as functional BOLD data must
+# be in 4-D images
 @pytest.fixture(scope='function')
 def bidsArchive3D(tmpdir, sample3DNifti1, imageMetadata):
-    adjustTimeUnits(imageMetadata)
-    return archiveWithImage(sample3DNifti1, imageMetadata, tmpdir)
+    metadata = imageMetadata.copy()
+
+    adjustTimeUnits(metadata)
+    metadata['datatype'] = 'anat'
+    metadata['suffix'] = None
+
+    return archiveWithImage(sample3DNifti1, metadata, tmpdir)
+"""
 
 
 # BIDS Archive with a 4-D image
 @pytest.fixture(scope='function')
 def bidsArchive4D(tmpdir, sample4DNifti1, imageMetadata):
-    adjustTimeUnits(imageMetadata)
-    return archiveWithImage(sample4DNifti1, imageMetadata, tmpdir)
+    metadata = imageMetadata.copy()
+    adjustTimeUnits(metadata)
+    return archiveWithImage(sample4DNifti1, metadata, tmpdir)
 
 
 # BIDS Archive with multiple runs for a single subject
 @pytest.fixture(scope='function')
 def bidsArchiveMultipleRuns(tmpdir, sample4DNifti1, imageMetadata):
-    adjustTimeUnits(imageMetadata)
-    archive = archiveWithImage(sample4DNifti1, imageMetadata, tmpdir)
+    metadata = imageMetadata.copy()
+    adjustTimeUnits(metadata)
+    archive = archiveWithImage(sample4DNifti1, metadata, tmpdir)
 
-    imageMetadata = imageMetadata.copy()
-    imageMetadata['run'] = int(imageMetadata['run']) + 1
-    incremental = BidsIncremental(sample4DNifti1, imageMetadata)
+    metadata = imageMetadata.copy()
+    adjustTimeUnits(metadata)
+    metadata['run'] = int(metadata['run']) + 1
+
+    incremental = BidsIncremental(sample4DNifti1, metadata)
     archive.appendIncremental(incremental)
 
     return archive

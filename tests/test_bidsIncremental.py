@@ -22,21 +22,32 @@ from rtCommon.bidsCommon import (
 from rtCommon.bidsIncremental import BidsIncremental
 from rtCommon.bidsArchive import BidsArchive
 from rtCommon.errors import MissingMetadataError
+from tests.common import isValidBidsArchive
 
 logger = logging.getLogger(__name__)
 
 
 # Test that construction fails for image metadata missing required fields
-def testInvalidConstruction(sample2DNifti1, sample4DNifti1, imageMetadata):
+def testInvalidConstruction(sample2DNifti1, samplePseudo2DNifti1,
+                            sample4DNifti1, imageMetadata):
     # Test empty image
     with pytest.raises(TypeError):
         BidsIncremental(image=None,
                         imageMetadata=imageMetadata)
 
     # Test 2-D image
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError) as err:
         BidsIncremental(image=sample2DNifti1,
                         imageMetadata=imageMetadata)
+        assert "Image must have at least 3 dimensions" in str(err.value)
+
+    # Test 2-D image masquerading as 4-D image
+    with pytest.raises(ValueError) as err:
+        BidsIncremental(image=samplePseudo2DNifti1,
+                        imageMetadata=imageMetadata)
+        assert ("Image's 3rd (and any higher) dimensions are <= 1, which means "
+                "it is a 2D image; images must have at least 3 dimensions" in
+                str(err.value))
 
     # Test incomplete metadata
     protocolName = imageMetadata.pop("ProtocolName")
@@ -69,6 +80,18 @@ def testInvalidConstruction(sample2DNifti1, sample4DNifti1, imageMetadata):
                         imageMetadata=imageMetadata)
         assert ("Image must be one of [nib.Nifti1Image, nib.Nifti2Image, "
                f"BIDSImageFile (got {type(notImage)})" in str(err.value))
+
+    # Test non-functional data
+    with pytest.raises(NotImplementedError) as err:
+        original = imageMetadata['datatype']
+        invalidType = 'anat'
+        imageMetadata['datatype'] = invalidType
+        BidsIncremental(image=sample4DNifti1,
+                        imageMetadata=imageMetadata)
+        imageMetadata['datatype'] = original
+
+        assert ("BIDS Incremental for BIDS datatypes other than 'func' is not "
+                f"yet implemented (got '{invalidType}')") in str(err.value)
 
 
 # Test that valid arguments produce a BIDS incremental
@@ -373,12 +396,14 @@ def testDiskOutput(validBidsI, tmpdir):
     archiveImage = archive.getImages()[0]
 
     # Remove pseudo entities to avoid conflict with the validBidsI
-    metadata = archive.getSidecarMetadata(archiveImage, onlySidecar=False)
+    metadata = archive.getSidecarMetadata(archiveImage, includeEntities=True)
     for entity in PYBIDS_PSEUDO_ENTITIES:
         metadata.pop(entity)
 
     incrementalFromArchive = BidsIncremental(archiveImage, metadata)
     assert incrementalFromArchive == validBidsI
+
+    assert isValidBidsArchive(archive.rootPath)
 
 
 # Test serialization results in equivalent BIDS-I object
