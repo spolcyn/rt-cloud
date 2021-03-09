@@ -104,9 +104,9 @@ class BidsArchive:
         # to the BIDSLayout object However, Some requests shouldn't be
         # auto-forwarded, even if they're in the right form.
         # List:
-        # getMetadata: Too similar to getImageMetadata, users may accidentally
+        # getMetadata: Too similar to getSidecarMetadata, users may accidentally
         #     call getMetadata which forwards to get_metadata and has different
-        #     behavior than getImageMetadata
+        #     behavior than getSidecarMetadata
         excludedAttributes = ['getMetadata']
 
         if attr not in excludedAttributes:
@@ -324,8 +324,8 @@ class BidsArchive:
         return (self.data is None)
 
     @failIfEmpty
-    def getImageMetadata(self, image: Union[str, BIDSImageFile],
-                         onlySidecar: bool = False) -> dict:
+    def getSidecarMetadata(self, image: Union[str, BIDSImageFile],
+                         includeEntities: bool = True) -> dict:
         """
         Get metadata for the file at the provided path in the dataset. Sidecar
         metadata is always returned, and BIDS entities present in the filename
@@ -334,10 +334,10 @@ class BidsArchive:
         Args:
             image: Path or BIDSImageFile pointing to the image file to get
                 metadata for.
-            onlySidecar: True to return only the metadata in the image's sidecar
-                JSON files.  False to additionally include the entities in the
-                filename (e.g., 'subject', 'task', and 'session'). Defaults to
-                False.
+            includeEntities: False to return only the metadata in the image's
+                sidecar JSON files.  True to additionally include the entities
+                in the filename (e.g., 'subject', 'task', and 'session').
+                Defaults to True.
 
         Raises:
             TypeError: If image is not a str or BIDSImageFile.
@@ -349,7 +349,7 @@ class BidsArchive:
         Examples:
             >>> archive = BidsArchive('/path/to/archive')
             >>> path = archive.getImages()[0].path
-            >>> archive.getImageMetadata(path)
+            >>> archive.getSidecarMetadata(path)
             {'AcquisitionMatrixPE': 320, 'AcquisitionNumber': 1, ... }
         """
         if isinstance(image, BIDSImageFile):
@@ -366,9 +366,7 @@ class BidsArchive:
         # both those from the filename and those from the sidecar metadata. True
         # returns only the metadata in the sidecar file, and False returns only
         # entities in the filename.
-        metadataParameter = None
-        if onlySidecar:
-            metadataParameter = True
+        metadataParameter = None if includeEntities else True
 
         return target.get_entities(metadata=metadataParameter)
 
@@ -713,7 +711,7 @@ class BidsArchive:
 
                 compatible, errorMsg = self._metadataAppendCompatible(
                     incremental.imageMetadata,
-                    self.getImageMetadata(imageFile))
+                    self.getSidecarMetadata(imageFile))
                 if not compatible:
                     raise MetadataMismatchError(
                         "Image metadata not append compatible: " + errorMsg)
@@ -838,7 +836,7 @@ class BidsArchive:
         else:
             raise DimensionError("Expected image to have 3 or 4 dimensions "
                                  f"(got {nDimensions})")
-        metadata = self.getImageMetadata(candidate)
+        metadata = self.getSidecarMetadata(candidate)
 
         # BIDS-I should only be given official entities used in a BIDS Archive
         for pseudoEntity in PYBIDS_PSEUDO_ENTITIES:

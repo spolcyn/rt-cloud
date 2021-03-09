@@ -205,7 +205,7 @@ def testFailEmpty(tmpdir):
         emptyArchive.dirExistsInArchive("will fail anyway")
         emptyArchive.getImages("will fail anyway")
         emptyArchive.addImage(None, "will fall anyway")
-        emptyArchive.getImageMetadata("will fall anyway")
+        emptyArchive.getSidecarMetadata("will fall anyway")
         emptyArchive.addMetadata({"will": "fail"}, "will fall anyway")
         emptyArchive.getIncremental(subject="will fall anyway",
                                     session="will fall anyway",
@@ -218,9 +218,9 @@ def testFailEmpty(tmpdir):
 def testGetSidecarMetadata(bidsArchive4D, imageMetadata):
     # all entities in imageMetadata should be returned
     EXTENSION = '.nii'
-    returnedMeta = bidsArchive4D.getImageMetadata(
+    returnedMeta = bidsArchive4D.getSidecarMetadata(
         bids_build_path(imageMetadata, BIDS_FILE_PATH_PATTERN) + EXTENSION,
-        onlySidecar=True)
+        includeEntities=True)
 
     # 'TaskName' is parsed from 'task' by BIDS-I when being created, before an
     # append, so it's not in the default imageMetadata test fixture
@@ -239,7 +239,7 @@ def testGetSidecarMetadata(bidsArchive4D, imageMetadata):
     invalidValues = [5, ["path1", "path2"]]
     for v in invalidValues:
         with pytest.raises(TypeError):
-            bidsArchive4D.getImageMetadata(v)
+            bidsArchive4D.getSidecarMetadata(v)
 
 
 # Test getting an event file from the archive
