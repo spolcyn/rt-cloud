@@ -420,5 +420,5 @@ if __name__ == "__main__":
     of this script. This statement is not satisfied if functions are called from another
     script using "from sample.py import FUNCTION"
     """
-    main(sys.argv)
+    main()
     sys.exit(0)

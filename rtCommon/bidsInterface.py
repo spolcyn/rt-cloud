@@ -211,7 +211,7 @@ class BidsStream:
         self.niftiImage = self.bidsImage.get_image()
         self.filename = self.niftiImage.get_filename()
         self.imgVolumes = nib.four_to_three(self.niftiImage)
-        self.metadata = self.bidsArchive.getSidecarMetadata(self.filename, onlySidecar=False)
+        self.metadata = self.bidsArchive.getSidecarMetadata(self.filename, includeEntities=True)
         self.metadata.pop('extension')
         self.numVolumes = len(self.imgVolumes)
         self.nextVol = 0
