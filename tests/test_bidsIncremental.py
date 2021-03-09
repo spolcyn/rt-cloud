@@ -28,16 +28,26 @@ logger = logging.getLogger(__name__)
 
 
 # Test that construction fails for image metadata missing required fields
-def testInvalidConstruction(sample2DNifti1, sample4DNifti1, imageMetadata):
+def testInvalidConstruction(sample2DNifti1, samplePseudo2DNifti1,
+                            sample4DNifti1, imageMetadata):
     # Test empty image
     with pytest.raises(TypeError):
         BidsIncremental(image=None,
                         imageMetadata=imageMetadata)
 
     # Test 2-D image
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError) as err:
         BidsIncremental(image=sample2DNifti1,
                         imageMetadata=imageMetadata)
+        assert "Image must have at least 3 dimensions" in str(err.value)
+
+    # Test 2-D image masquerading as 4-D image
+    with pytest.raises(ValueError) as err:
+        BidsIncremental(image=samplePseudo2DNifti1,
+                        imageMetadata=imageMetadata)
+        assert ("Image's 3rd (and any higher) dimensions are <= 1, which means "
+                "it is a 2D image; images must have at least 3 dimensions" in
+                str(err.value))
 
     # Test incomplete metadata
     protocolName = imageMetadata.pop("ProtocolName")

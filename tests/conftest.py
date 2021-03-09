@@ -109,8 +109,17 @@ def sample2DNifti1():
     newData = getNiftiData(nifti)
     # max positive value of 2 byte, signed short used in Nifti header for
     # storing dimension information
-    newData = newData.flatten()[:2**15 - 1]
+    newData = (newData.flatten()[:10000]).reshape((100, 100))
     return nib.Nifti1Image(newData, nifti.affine)
+
+
+# A NIfTI image that is technically 4-D, but actually is only 2-D (i.e., it's
+# header has 4 dimensions, but the last two are 1's)
+@pytest.fixture
+def samplePseudo2DNifti1(sample2DNifti1):
+    data = getNiftiData(sample2DNifti1)
+    data = data.reshape((data.shape[0], data.shape[1], 1, 1))
+    return nib.Nifti1Image(data, sample2DNifti1.affine)
 
 
 # 3-D NIfTI 1 image derived from the test DICOM image

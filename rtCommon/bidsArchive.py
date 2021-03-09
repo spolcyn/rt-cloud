@@ -721,17 +721,16 @@ class BidsArchive:
             # Ensure archive image is 4D, expanding if not
             archiveData = getNiftiData(archiveImg)
             nDimensions = len(archiveData.shape)
-            if nDimensions == 3:
-                archiveData = np.expand_dims(archiveData, 3)
-                correct3DHeaderTo4D(archiveImg, incremental.getMetadataField(
-                    "RepetitionTime"))
-            elif nDimensions == 4:
-                pass
-            else:
+            if nDimensions < 3 or nDimensions > 4:
                 # RT-Cloud assumes 3D or 4D NIfTI images, other sizes have
                 # unknown interpretations
                 raise DimensionError("Expected image to have 3 or 4 dimensions "
                                      f"(got {nDimensions})")
+
+            if nDimensions == 3:
+                archiveData = np.expand_dims(archiveData, 3)
+                correct3DHeaderTo4D(archiveImg, incremental.getMetadataField(
+                    "RepetitionTime"))
 
             # Create the new, combined image to replace the old one
             # TODO(spolcyn): Replace this with Nibabel's concat_images function
