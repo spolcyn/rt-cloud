@@ -791,11 +791,16 @@ class BidsArchive:
             >>> inc2 = archive.getIncremental(**entityFilterDict)
             >>> inc == inc2
             True
+
+            By default, getIncremental has an imageIndex of 0. Changing that
+            parameter will return a different 3-D image from the volume, using
+            the same search metadata.
+
             >>> inc.imageDimensions
             (64, 64, 27, 1)
             >>> inc3 = archive.getIncremental(imageIndex=1, **entityFilterDict)
-            >>> inc2 == inc3
-            False
+            >>> inc2 != inc3
+            True
         """
         if imageIndex < 0:
             raise IndexError(f"Image index must be >= 0 (got {imageIndex})")
