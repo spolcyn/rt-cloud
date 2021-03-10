@@ -5,12 +5,12 @@ bidsArchive.py
 Implements interacting with an on-disk BIDS Archive.
 
 -----------------------------------------------------------------------------"""
+from typing import List, Tuple, Union
 import functools
 import json
 import logging
 import os
 import re
-from typing import List, Tuple, Union
 
 from bids.config import set_option as bc_set_option
 from bids.exceptions import (
@@ -36,8 +36,8 @@ from rtCommon.errors import (
     DimensionError,
     MetadataMismatchError,
     MissingMetadataError,
-    StateError,
     QueryError,
+    StateError,
 )
 
 # Silence future warning
@@ -325,7 +325,7 @@ class BidsArchive:
 
     @failIfEmpty
     def getSidecarMetadata(self, image: Union[str, BIDSImageFile],
-                         includeEntities: bool = True) -> dict:
+                           includeEntities: bool = True) -> dict:
         """
         Get metadata for the file at the provided path in the dataset. Sidecar
         metadata is always returned, and BIDS entities present in the filename

@@ -9,7 +9,10 @@ from rtCommon.imageHandling import readDicomFromBuffer
 from rtCommon.errors import ValidationError, RequestError
 import rtCommon.utils as utils
 from tests.backgroundTestServers import BackgroundTestServers
-from tests.common import test_sampleProjectDicomPath, test_dicomPath
+from tests.common import rtCloudPath, test_dicomPath
+
+test_sampleProjectDicomPath = os.path.join(rtCloudPath,
+    "projects/sample/dicomDir/20190219.0219191_faceMatching.0219191_faceMatching/")
 
 # Note these tests will test the local version of DataInterface (not remote)
 

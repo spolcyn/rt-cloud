@@ -7,8 +7,10 @@ from rtCommon.clientInterface import ClientInterface
 from rtCommon.bidsInterface import BidsInterface, tmpDownloadOpenNeuro
 from rtCommon.bidsCommon import getDicomMetadata
 from tests.backgroundTestServers import BackgroundTestServers
-from tests.common import test_sampleProjectDicomPath
+from tests.common import rtCloudPath
 
+test_sampleProjectDicomPath = os.path.join(rtCloudPath,
+    "projects/sample/dicomDir/20190219.0219191_faceMatching.0219191_faceMatching/")
 
 class TestBidsInterface:
     serversForTests = None

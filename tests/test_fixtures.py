@@ -1,6 +1,7 @@
 """
-Test more complicated test fixtures, like BIDS Archives, separate from the
-normal testing suite.
+Test more complicated test fixtures, like BIDS Archives. Separate tests speed up
+tests that use the fixtures, as the fixture doesn't have to be validated every
+time it's created.
 """
 
 from tests.common import isValidBidsArchive

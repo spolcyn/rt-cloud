@@ -20,14 +20,11 @@ test_nifti2_4DFile = \
     'test_input_4d_nifti2_func_ses-01_task-story_run-01_bold.nii'
 
 # absolute paths derived from above names
-testRootPath = os.path.dirname(__file__)
-rootPath = os.path.dirname(testRootPath)
-test_inputDirPath = os.path.join(testRootPath, test_inputDirName)
+testPath = os.path.dirname(__file__)
+rtCloudPath = os.path.dirname(testPath)
+test_inputDirPath = os.path.join(testPath, test_inputDirName)
 test_dicomPath = os.path.join(test_inputDirPath, test_dicomFile)
 test_dicomTruncPath = os.path.join(test_inputDirPath, test_dicomTruncFile)
-test_sampleProjectPath = os.path.join(rootPath, 'projects/sample')
-test_sampleProjectDicomPath = os.path.join(test_sampleProjectPath, 
-    "dicomDir/20190219.0219191_faceMatching.0219191_faceMatching/")
 test_3DNifti1Path = os.path.join(test_inputDirPath, test_nifti1_3DFile)
 test_3DNifti2Path = os.path.join(test_inputDirPath, test_nifti2_3DFile)
 test_4DNifti1Path = os.path.join(test_inputDirPath, test_nifti1_4DFile)

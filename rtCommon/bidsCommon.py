@@ -6,15 +6,15 @@ Shared constants and functions used by modules working with BIDS data.
 
 -----------------------------------------------------------------------------"""
 from enum import Enum
+from typing import Any, Callable
 import functools
 import logging
 import re
-from typing import Any, Callable
 
 from bids.layout.models import Config as BidsConfig
-import pydicom
 import nibabel as nib
 import numpy as np
+import pydicom
 
 logger = logging.getLogger(__name__)
 

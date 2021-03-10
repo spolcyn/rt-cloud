@@ -21,7 +21,6 @@ dependencies:
   - pip
   - pydicom
   - pytest
-  - pyyaml
   - requests
   - rpyc
   - scikit-learn

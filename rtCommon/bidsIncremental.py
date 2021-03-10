@@ -7,10 +7,10 @@ different applications.
 
 -----------------------------------------------------------------------------"""
 from copy import deepcopy
-import json
 from operator import eq as opeq
-import os
 from typing import Any, Callable
+import json
+import os
 
 from bids.layout import BIDSImageFile
 from bids.layout.writing import build_path as bids_build_path
@@ -19,7 +19,6 @@ import nibabel as nib
 import numpy as np
 import pandas as pd
 
-from rtCommon.errors import MissingMetadataError
 from rtCommon.bidsCommon import (
     BIDS_DIR_PATH_PATTERN,
     BIDS_FILE_PATTERN,
@@ -35,6 +34,7 @@ from rtCommon.bidsCommon import (
     metadataFromProtocolName,
     symmetricDictDifference,
 )
+from rtCommon.errors import MissingMetadataError
 
 logger = logging.getLogger(__name__)
 

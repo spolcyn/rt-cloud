@@ -2,13 +2,20 @@
 
 dicomToBidsService.py
 
-Eventually, this will implement conversion between DICOM and BIDS.
+A very basic DICOM to BIDS-I converter.
 
 -----------------------------------------------------------------------------"""
 
-def dicomToBidsinc(dicomImg: pydicom.dataset.Dataset) -> BidsIncremental:
+import pydicom
+
+from rtCommon.bidsCommon import getDicomMetadata
+from rtCommon.bidsIncremental import BidsIncremental
+from rtCommon.imageHandling import convertDicomImgToNifti
+
+
+def dicomToBidsInc(dicomImg: pydicom.dataset.Dataset,
+                   extraMetadata: dict = {}) -> BidsIncremental:
     # TODO(spolcyn): Do this all in memory -- dicom2nifti is promising
-    # Put extra metadata in sidecar JSON file
     # Currently, there are 4 disk operations:
     # 1) Read DICOM (by dcm2niix)
     # 2) Write NIfTI
@@ -18,10 +25,10 @@ def dicomToBidsinc(dicomImg: pydicom.dataset.Dataset) -> BidsIncremental:
     # NOTE: This is not the final version of this method.
     # The conversion from DICOM to BIDS-I and gathering all required metadata
     # can be complex, as DICOM doesn't necessarily have the metadata required
-    # for BIDS in it by default. Thus, another component will handle the logic
+    # for BIDS in it by default. Thus, another component should handle the logic
     # and error handling surrounding this.
     niftiImage = convertDicomImgToNifti(dicomImg)
-    publicMeta, privateMeta = getMetadata(dicomImg)
+    metadata = getDicomMetadata(dicomImg)
+    metadata.update(extraMetadata)
 
-    publicMeta.update(privateMeta)  # combine metadata dictionaries
-    return BidsIncremental(image=niftiImage, imageMetadata=publicMeta)
+    return BidsIncremental(image=niftiImage, imageMetadata=metadata)

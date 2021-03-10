@@ -79,8 +79,6 @@ def testMetadataExtraction(dicomImage, dicomMetadataSample):
     for field, value in dicomMetadataSample.items():
         assert metadata.get(field) == str(value)
 
-    # TODO(spolcyn): Also check private keys and public keys individually
-
 
 # Ensure entitity dictionary is loaded and parsed properly
 # Expected dictionary format:

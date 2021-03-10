@@ -5,10 +5,10 @@ from nibabel.nicom import dicomreaders
 import numpy as np
 import pytest
 
-import rtCommon.imageHandling as imgHandler
 from rtCommon.dataInterface import DataInterface
 from rtCommon.errors import ValidationError
 from tests.common import test_dicomPath, test_dicomTruncPath, test_inputDirPath
+import rtCommon.imageHandling as imgHandler
 
 
 def test_readDicom():

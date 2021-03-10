@@ -5,7 +5,6 @@ import pickle
 
 from bids.layout import BIDSImageFile
 from bids.layout.writing import build_path as bids_build_path
-from bids_validator import BIDSValidator
 import nibabel as nib
 import numpy as np
 import pandas as pd
@@ -378,17 +377,6 @@ def testDiskOutput(validBidsI, tmpdir):
     # Write the archive
     datasetRoot = os.path.join(tmpdir, "bids-pytest-dataset")
     validBidsI.writeToDisk(datasetRoot)
-
-    # Validate the BIDS-compliance of each path (relative to dataset root) of
-    # every file in the archive
-    # TODO(spolcyn): Run the full, node-based bids-validator automatically on
-    # the output
-    validator = BIDSValidator()
-    for dirPath, _, filenames in os.walk(datasetRoot):
-        for f in filenames:
-            fname = os.path.join(dirPath, f)
-            fname = fname.replace(datasetRoot, "")
-            assert validator.is_bids(fname)
 
     # Validate the output can be opened by BidsArchive and verified against the
     # source BIDS-Incremental

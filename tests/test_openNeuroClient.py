@@ -5,10 +5,10 @@ from rtCommon.structDict import StructDict
 from rtCommon.clientInterface import ClientInterface
 from projects.openNeuroClient import openNeuroClient
 from tests.backgroundTestServers import BackgroundTestServers
-from tests.common import testRootPath
+from tests.common import testPath, rtCloudPath
 
-tmpDir = os.path.join(testRootPath, 'tmp/')
-openNeuroClientProjectPath = os.path.join(testRootPath, 'projects/openNeuroClient')
+tmpDir = os.path.join(testPath, 'tmp/')
+openNeuroClientProjectPath = os.path.join(rtCloudPath, 'projects/openNeuroClient')
 
 allowedDirs =  ['/tmp', openNeuroClientProjectPath]
 allowedFileTypes = ['.dcm', '.txt']

@@ -1,10 +1,10 @@
 # NOTE: Could modularize this further by creating a fixtures dir and importing
 # See: https://gist.github.com/peterhurford/09f7dcda0ab04b95c026c60fa49c2a68
+from pathlib import Path
+from random import randint
 import json
 import logging
 import os
-from pathlib import Path
-from random import randint
 
 from bids.layout.writing import build_path as bids_build_path
 import nibabel as nib
@@ -13,17 +13,17 @@ import pydicom
 import pytest
 
 from tests.common import (
-    test_dicomPath,
     test_3DNifti1Path,
     test_3DNifti2Path,
     test_4DNifti1Path,
-    test_4DNifti2Path
+    test_4DNifti2Path,
+    test_dicomPath,
 )
 from rtCommon.bidsArchive import BidsArchive
 from rtCommon.bidsCommon import (
-    DEFAULT_DATASET_DESC,
     BIDS_DIR_PATH_PATTERN,
     BIDS_FILE_PATTERN,
+    DEFAULT_DATASET_DESC,
     adjustTimeUnits,
     getDicomMetadata,
     getNiftiData,
