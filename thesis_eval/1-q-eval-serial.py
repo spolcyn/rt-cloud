@@ -23,7 +23,6 @@ PATH_FMT_STRING = os.path.join(DERIV_DIR, IMAGE_FMT_STRING)
 paths = [PATH_FMT_STRING.format(i) for i in range(1, 6)]
 
 # Read in NIfTI images to memory
-# NOTE: We're probably only going to want 3-D NIfTI images, tbh, so maybe getting DICOM images is better than getting NIfTI images
 images = [readNifti(path) for path in paths]
 
 # Setup list of BIDS-I objects
