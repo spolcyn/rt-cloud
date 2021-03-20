@@ -11,7 +11,6 @@ from rtCommon.errors import MetadataMismatchError
 
 logger = logging.getLogger(__name__)
 
-
 # Test equality check is correct
 def testEq(oneImageBidsI):
     run1 = BidsRun()
@@ -58,6 +57,7 @@ def testGetOutOfBounds(oneImageBidsI):
 
 
 # Test get and append
+<<<<<<< HEAD
 def testGetAppendIncremental(oneImageBidsI):
     run = BidsRun()
 
@@ -83,6 +83,7 @@ def testConstruction(oneImageBidsI, sampleBidsEntities):
     assert runWithEntities is not None
     assert runWithEntities.getRunEntities() == sampleBidsEntities
 
+<<<<<<< HEAD
 
 # Test append correctly sets entities
 def testAppendSetEntities(oneImageBidsI, sampleBidsEntities):
