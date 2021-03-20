@@ -1,4 +1,4 @@
-import multiProcessing
+import multiprocessing
 
 import rtCommon.projectServer as ps
 from rtCommon.structDict import StructDict
@@ -9,11 +9,12 @@ defaultCfg = StructDict({'sessionId': "test",
                          'subjectName': "test_sample",
                          'subjectNum': 1,
                          'subjectDay': 1,
-                         'sessionNum': 1})
+                         'sessionNum': 1,
+                         'runNum': [0, 1, 2, 3]})
 
 defaultProjectArgs = StructDict({'config': defaultCfg,
-                                 'mainScript': 'projects/sample/sample.py',
-                                 'port': testPort,
+                                 'mainScript': 'integrationClient.py',
+                                 'port': 8888,
                                  'test': False})
 args = defaultProjectArgs
 args['dataRemote'] = True

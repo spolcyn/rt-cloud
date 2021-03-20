@@ -90,7 +90,6 @@ for dataset_idx, dataset_num in enumerate(DATASET_NUMBERS):
                     # filter out the None entities
                     entities = {e: entities[e] for e in entities if entities[e] is not None}
 
-                    print("Search entities:", entities)
                     images = archive.getImages(**entities)
                     # possible that not all subjects have all tasks, sessions,
                     # or runs, so if can't find particular combo, just continue

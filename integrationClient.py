@@ -8,6 +8,8 @@ streamId = clientInterface.bidsInterface.initOpenNeuroStream("ds002014", **entit
 
 numVolumes = clientInterface.bidsInterface.getNumVolumes(streamId)
 
+print("NumVolumes:", numVolumes)
+
 start = time.process_time()
 
 for i in range(numVolumes):
