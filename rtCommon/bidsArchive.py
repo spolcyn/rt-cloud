@@ -34,6 +34,7 @@ from rtCommon.bidsCommon import (
     niftiImagesAppendCompatible,
 )
 from rtCommon.bidsIncremental import BidsIncremental
+from rtCommon.bidsRun import BidsRun
 from rtCommon.errors import (
     DimensionError,
     MetadataMismatchError,
@@ -654,3 +655,16 @@ class BidsArchive:
         except MissingMetadataError as e:
             raise MissingMetadataError("Archive lacks required metadata for "
                                        "BIDS Incremental creation: " + str(e))
+
+    @failIfEmpty
+    def getBidsRun(self, **entities) -> BidsRun:
+        images = self.getImages(**entities)
+        if len(images) == 0:
+            raise QueryError(f"Found no runs matching entities {entities}")
+        if len(images) > 1:
+            entities = [img.get_entities() for img in images]
+            raise QueryError("Provided entities were not unique to one run; "
+                             "try specifying more entities "
+                             f" (got runs with these entities: {entities}")
+        else:
+            image = images[0]

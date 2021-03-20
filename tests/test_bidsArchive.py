@@ -311,7 +311,9 @@ def testNiftiHeaderValidation(sample4DNifti1, sample3DNifti1, sample2DNifti1,
     # Dimension 4 of the 3D image should not matter
     for i in range(0, 100):
         sample3DNifti1.header["dim"][4] = i
-        assert niftiImagesAppendCompatible(sample3DNifti1, sample4DNifti1)
+        compatible, errorMsg = niftiImagesAppendCompatible(sample3DNifti1,
+                                                           sample4DNifti1)
+        assert compatible
 
     sample3DNifti1.header["dim"] = np.copy(original3DHeader["dim"])
     assert sample3DNifti1.header == original3DHeader
@@ -529,7 +531,7 @@ def testAppendNewSubject(bidsArchive4D, validBidsI):
     assert isValidBidsArchive(bidsArchive4D.rootPath)
 
 
-""" ----- BEGIN TEST IMAGE STRIPPING ----- """
+""" ----- BEGIN TEST IMAGE GETTING ----- """
 
 
 # Test stripping an image off a BIDS archive works as expected
@@ -717,3 +719,21 @@ def testGetIncrementalNoParameterMatch(bidsArchive4D, imageMetadata, caplog):
             assert incremental is None
 
         imageMetadata[argName] = oldValue
+
+
+# Test getBidsRun returns all images in a given run
+def testGetBidsRun(bidsArchiveMultipleRuns, sampleBidsEntities, sample4DNifti1):
+    logger.debug("Subjects %s, runs %s, tasks %s, sessions %s",
+                 bidsArchiveMultipleRuns.getSubjects(),
+                 bidsArchiveMultipleRuns.getRuns(),
+                 bidsArchiveMultipleRuns.getTasks(),
+                 bidsArchiveMultipleRuns.getSessions())
+    logger.debug(sampleBidsEntities)
+    run = bidsArchiveMultipleRuns.getBidsRun(**sampleBidsEntities)
+
+    with pytest.raises(QueryError):
+        bidsArchiveMultipleRuns.getBidsRun(
+            subject=sampleBidsEntities['subject'])
+    # assert run is not None
+    # assert run.numVols() == sample4DNifti1.header.get_data_shape()[3]
+    pass
