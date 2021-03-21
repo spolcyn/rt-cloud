@@ -42,6 +42,7 @@ from rtCommon.errors import (
     QueryError,
     StateError,
 )
+from rtCommon.imageHandling import niftiToMem
 
 # Silence future warning
 bc_set_option('extension_initial_dot', True)
@@ -667,4 +668,50 @@ class BidsArchive:
                              "try specifying more entities "
                              f" (got runs with these entities: {entities}")
         else:
-            image = images[0]
+            bidsImage = images[0]
+            niftiImage = niftiToMem(bidsImage.get_image())
+            metadata = self.getSidecarMetadata(bidsImage)
+
+            run = BidsRun(**bidsImage.get_entities())
+            for imageIdx in range(niftiImage.header.get_data_shape()[3]):
+                newImage = nib.Nifti1Image(niftiImage.dataobj[..., imageIdx],
+                                           niftiImage.affine,
+                                           niftiImage.header)
+                newIncremental = BidsIncremental(newImage, metadata)
+                run.appendIncremental(newIncremental, unsafeAppend=True)
+
+            return run
+
+    def appendBidsRun(self, run: BidsRun) -> None:
+        numIncrementals = run.numIncrementals()
+        if numIncrementals == 0:
+            return
+
+        # Coalesce into a single BIDS-I
+        refIncremental = run.getIncremental(0)
+        imageShape = refIncremental.imageDimensions
+        imageShape = imageShape[:3] + (numIncrementals,)
+        metadata = refIncremental.imageMetadata
+
+        # It is critical to set the dtype of the array according to the source
+        # image's dtype. Without doing so, int data may be cast to float (the
+        # numpy default type for a new array), which Nibabel will then write
+        # float data to disk using the NIfTI scl_scope header scaling field.
+        # This procedure almost always results in less precision than offered by
+        # the original ints, which means images at either end of a round-trip
+        # (read image data/put image data in numpy array/save image data/read
+        # image from disk) will have arrays with slightly different values.
+        newDataArray = np.zeros(imageShape, order='F',
+                                dtype=refIncremental.image.dataobj.dtype)
+
+        for incIdx in range(numIncrementals):
+            incremental = run.getIncremental(incIdx)
+            newDataArray[..., incIdx] = getNiftiData(incremental.image)[..., 0]
+
+        newImage = refIncremental.image.__class__(newDataArray,
+                                                  refIncremental.image.affine,
+                                                  refIncremental.image.header)
+        consolidatedIncremental = BidsIncremental(newImage, metadata)
+
+        # Append the single BIDS-I to the archive
+        self.appendIncremental(consolidatedIncremental)

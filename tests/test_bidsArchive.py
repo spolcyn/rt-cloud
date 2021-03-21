@@ -1,4 +1,5 @@
 import logging
+import mmap
 from operator import eq as opeq
 import os
 from pathlib import Path
@@ -13,7 +14,6 @@ import numpy as np
 import pytest
 
 from rtCommon.bidsArchive import BidsArchive
-from rtCommon.bidsIncremental import BidsIncremental
 from rtCommon.bidsCommon import (
     BIDS_FILE_PATH_PATTERN,
     BidsFileExtension,
@@ -25,6 +25,8 @@ from rtCommon.bidsCommon import (
     niftiImagesAppendCompatible,
     symmetricDictDifference,
 )
+from rtCommon.bidsIncremental import BidsIncremental
+from rtCommon.bidsRun import BidsRun
 from tests.common import isValidBidsArchive
 
 from rtCommon.errors import (
@@ -722,18 +724,47 @@ def testGetIncrementalNoParameterMatch(bidsArchive4D, imageMetadata, caplog):
 
 
 # Test getBidsRun returns all images in a given run
-def testGetBidsRun(bidsArchiveMultipleRuns, sampleBidsEntities, sample4DNifti1):
-    logger.debug("Subjects %s, runs %s, tasks %s, sessions %s",
-                 bidsArchiveMultipleRuns.getSubjects(),
-                 bidsArchiveMultipleRuns.getRuns(),
-                 bidsArchiveMultipleRuns.getTasks(),
-                 bidsArchiveMultipleRuns.getSessions())
-    logger.debug(sampleBidsEntities)
-    run = bidsArchiveMultipleRuns.getBidsRun(**sampleBidsEntities)
-
-    with pytest.raises(QueryError):
+def testGetBidsRun(bidsArchiveMultipleRuns, sampleBidsEntities, sample4DNifti1,
+                   bidsArchive4D, validBidsI):
+    # Just one entity is not specific enough
+    with pytest.raises(QueryError) as err:
         bidsArchiveMultipleRuns.getBidsRun(
             subject=sampleBidsEntities['subject'])
-    # assert run is not None
-    # assert run.numVols() == sample4DNifti1.header.get_data_shape()[3]
-    pass
+        assert "Provided entities were not unique to one run" in str(err.value)
+
+    run = bidsArchive4D.getBidsRun(**sampleBidsEntities)
+    runData = getNiftiData(run.getIncremental(0).image).flatten()
+    incrementalData = getNiftiData(validBidsI.image)[..., 0].flatten()
+    assert runData.shape == incrementalData.shape
+    assert np.array_equal(runData, incrementalData)
+
+    # With multiple runs, not specifying run isn't good enough
+    entities = sampleBidsEntities.copy()
+    del entities['run']
+    with pytest.raises(QueryError) as err:
+        bidsArchiveMultipleRuns.getBidsRun(**entities)
+        assert "Found no runs matching entities" in str(err.value)
+
+    run = bidsArchiveMultipleRuns.getBidsRun(**sampleBidsEntities)
+    assert run is not None
+    assert run.numIncrementals() == sample4DNifti1.header.get_data_shape()[3]
+
+    # Ensure that the incremental's data is in memory by checking whether its
+    # base is either Python's mmap type or Numpy's memmap type
+    incremental = run.getIncremental(0)
+    assert not isinstance(getNiftiData(incremental.image).base, mmap.mmap)
+    assert not isinstance(getNiftiData(incremental.image).base, np.memmap)
+
+
+# Test appendBidsRun works with compatible images
+def testAppendBidsRun(tmpdir, bidsArchive4D, bidsArchiveMultipleRuns,
+                      sampleBidsEntities):
+    archivePath = Path(tmpdir, "appendBidsRunArchive")
+    archive = BidsArchive(archivePath)
+    emptyRun = BidsRun()
+    archive.appendBidsRun(emptyRun)
+
+    run = bidsArchive4D.getBidsRun(**sampleBidsEntities)
+    archive.appendBidsRun(run)
+
+    assert archive.getBidsRun(**sampleBidsEntities) == run
