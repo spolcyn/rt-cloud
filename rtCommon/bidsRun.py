@@ -9,6 +9,7 @@ appending fMRI runs' data to a BIDS Archive.
 import logging
 
 from rtCommon.bidsCommon import (
+    getNiftiData,
     niftiImagesAppendCompatible,
     symmetricDictDifference,
 )
@@ -50,17 +51,17 @@ class BidsRun:
                              f"{self.numVols()} incrementals")
 
     def appendIncremental(self, incremental: BidsIncremental,
-                          unsafeAppend: bool = False) -> None:
+                          validateAppend: bool = True) -> None:
         """
         Appends an incremental to this run's data, setting the run's entities if
         the run is empty.
 
         Arguments:
-            incremental: The incremental to add to the run.
-            unsafeAppend: Skip validating whether the incremental matches the
-                current run's data (default False). Useful for efficiently
-                creating a whole run at once from an existing image volume,
-                where all data is known to be match already.
+            incremental: The incremental to add to the run.  validateAppend:
+                Validate the incremental matches the current run's data (default
+                True). Turning off is useful for efficiently creating a whole
+                run at once from an existing image volume, where all data is
+                known to be match already.
 
         Raises:
             MetadataMismatchError: If either the incremental's entities or its
@@ -70,31 +71,42 @@ class BidsRun:
         if len(self._entities) == 0:
             self._entities = incremental.entities
 
-        # No validation needed if first incremental
-        if len(self.incrementals) == 0 or unsafeAppend:
+        if validateAppend:
+            if not incremental.entities == self._entities:
+                entityDifference = symmetricDictDifference(self._entities,
+                                                           incremental.entities)
+                errorMsg = ("Incremental's BIDS entities do not match this "
+                            f"run's entities (difference: {entityDifference})")
+                raise MetadataMismatchError(errorMsg)
+
+            if self.numIncrementals() > 0:
+                canAppend, niftiErrorMsg = \
+                    niftiImagesAppendCompatible(incremental.image,
+                                                self.incrementals[-1].image)
+
+                if not canAppend:
+                    errorMsg = ("Incremental's NIfTI header not compatible "
+                                f" with this run's images ({niftiErrorMsg})")
+                    raise MetadataMismatchError(errorMsg)
+
+        # Slice up the incremental into smaller incrementals if it has multiple
+        # images in its image volume
+        imagesInVolume = incremental.imageDimensions[3]
+        if imagesInVolume == 1:
             self.incrementals.append(incremental)
-            return
+        else:
+            # Split up the incremental into single-image volumes
+            image = incremental.image
+            imageData = getNiftiData(image)
+            affine = image.affine
+            header = image.header
+            metadata = incremental.imageMetadata
 
-        # If run already started, ensure incremental matches run before
-        # appending it
-        if not incremental.entities == self._entities:
-            entityDifference = symmetricDictDifference(self._entities,
-                                                       incremental.entities)
-            errorMsg = ("Incremental's BIDS entities do not match this run's "
-                        f"entities (difference: {entityDifference})")
-            raise MetadataMismatchError(errorMsg)
-
-        canAppend, niftiErrorMsg = \
-            niftiImagesAppendCompatible(incremental.image,
-                                        self.incrementals[-1].image)
-
-        if not canAppend:
-            errorMsg = ("Incremental's NIfTI header isn't append-compatible "
-                        f"with this run's images ({niftiErrorMsg})")
-            raise MetadataMismatchError(errorMsg)
-
-        # All checks passed
-        self.incrementals.append(incremental)
+            for imageIdx in range(imagesInVolume):
+                newData = imageData[..., imageIdx]
+                newImage = incremental.image.__class__(newData, affine, header)
+                newIncremental = BidsIncremental(newImage, metadata)
+                self.incrementals.append(newIncremental)
 
     def numIncrementals(self) -> int:
         """

@@ -139,7 +139,10 @@ def testStringOutput(bidsArchive4D):
 # Test creating bidsArchive object in an empty directory
 def testEmptyArchiveCreation(tmpdir):
     datasetRoot = Path(tmpdir, "bids-archive")
-    assert BidsArchive(datasetRoot) is not None
+    archive = BidsArchive(datasetRoot)
+    assert archive is not None
+    assert archive._getCache is not None
+    assert archive._appendCache is not None
 
 
 # Test empty check
@@ -251,6 +254,7 @@ def testGetSidecarMetadata(bidsArchive4D, imageMetadata):
 def testGetEvents(validBidsI, imageMetadata, tmpdir):
     archive = BidsArchive(tmpdir)
     archive.appendIncremental(validBidsI)
+    archive.flushCache()
 
     # Get the events from the archive as a pandas data frame
     events = archive.getEvents()[0].get_df()
@@ -408,6 +412,7 @@ def testEmptyArchiveAppend(validBidsI, imageMetadata, tmpdir):
     datasetRoot = Path(tmpdir, testEmptyArchiveAppend.__name__)
     archive = BidsArchive(datasetRoot)
     archive.appendIncremental(validBidsI)
+    archive.flushCache()
 
     assert not archive.isEmpty()
     assert archiveHasMetadata(archive, imageMetadata)
@@ -492,6 +497,7 @@ def testConflictingMetadataAppend(bidsArchive4D, sample4DNifti1, imageMetadata):
 def test4DAppend(bidsArchive4D, validBidsI, imageMetadata):
     incrementAcquisitionValues(validBidsI)
     bidsArchive4D.appendIncremental(validBidsI)
+    bidsArchive4D.flushCache()
 
     assert archiveHasMetadata(bidsArchive4D, imageMetadata)
     assert appendDataMatches(bidsArchive4D, validBidsI, startIndex=2)
@@ -506,6 +512,7 @@ def testSequenceAppend(bidsArchive4D, validBidsI, imageMetadata):
     for i in range(NUM_APPENDS):
         incrementAcquisitionValues(validBidsI)
         bidsArchive4D.appendIncremental(validBidsI)
+    bidsArchive4D.flushCache()
 
     image = bidsArchive4D.getImages(
         matchExact=False, **filterEntities(imageMetadata))[0].get_image()
@@ -526,6 +533,7 @@ def testAppendNewSubject(bidsArchive4D, validBidsI):
 
     validBidsI.setMetadataField("subject", "02")
     bidsArchive4D.appendIncremental(validBidsI)
+    bidsArchive4D.flushCache()
 
     assert len(bidsArchive4D.getSubjects()) == len(preSubjects) + 1
 
@@ -538,7 +546,7 @@ def testAppendNewSubject(bidsArchive4D, validBidsI):
 
 # Test stripping an image off a BIDS archive works as expected
 def testGetIncremental(bidsArchive4D, sample3DNifti1, sample4DNifti1,
-                       imageMetadata):
+                       imageMetadata, validBidsI):
     """
     TODO(spolcyn): Support anatomical archives
     # 3D Case
@@ -568,6 +576,9 @@ def testGetIncremental(bidsArchive4D, sample3DNifti1, sample4DNifti1,
             datatype="func",
             imageIndex=index,
             session=imageMetadata["session"])
+
+        assert bidsArchive4D._getCache.numIncrementals() == \
+            validBidsI.imageDimensions[3]
 
         assert len(incremental.imageDimensions) == 4
         assert incremental.imageDimensions[3] == 1
@@ -627,7 +638,8 @@ def testGetIncrementalNoMatchingMetadata(bidsArchive4D, imageMetadata, caplog,
             task=imageMetadata["task"],
             suffix=imageMetadata["suffix"],
             datatype="func",
-            session=imageMetadata["session"])
+            session=imageMetadata["session"],
+            useCache=False)
 
 
 # Test get incremental with an out-of-bounds image index for the matching image
@@ -696,7 +708,8 @@ def testGetIncrementalNoParameterMatch(bidsArchive4D, imageMetadata, caplog):
             suffix=imageMetadata["suffix"],
             datatype="func",
             session=imageMetadata['session'],
-            run=2)
+            run=2,
+            useCache=False)
 
         assert incremental is None
 
@@ -716,7 +729,8 @@ def testGetIncrementalNoParameterMatch(bidsArchive4D, imageMetadata, caplog):
                 task=imageMetadata["task"],
                 suffix=imageMetadata["suffix"],
                 datatype="func",
-                session=imageMetadata['session'])
+                session=imageMetadata['session'],
+                useCache=False)
 
             assert incremental is None
 

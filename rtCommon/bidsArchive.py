@@ -93,6 +93,13 @@ class BidsArchive:
                          self.rootPath, str(e))
             self.data: BIDSLayout = None
 
+        self._getCache = BidsRun()
+        self._appendCache = BidsRun()
+
+        # flag for if the BIDSLayout needs to be updated given changes to the
+        # archive on disk
+        self._layoutDirty = False
+
     def __str__(self):
         out = str(self.data)
         if 'BIDS Layout' in out:
@@ -434,10 +441,22 @@ class BidsArchive:
         else:
             return results
 
+    def _appendToCache(self, incremental: BidsIncremental):
+        if self._appendCache.getRunEntities() != incremental.entities:
+            self.flushCache()
+
+        # Cache ready
+        self._appendCache.appendIncremental(incremental)
+
+        if self._appendCache.getRunEntities() == \
+                self._getCache.getRunEntities():
+            self._getCache.appendIncremental(incremental)
+
     def appendIncremental(self,
                           incremental: BidsIncremental,
                           makePath: bool = True,
-                          validateAppend: bool = True) -> bool:
+                          validateAppend: bool = True,
+                          useCache: bool = True) -> bool:
         """
         Appends a BIDS Incremental's image data and metadata to the archive,
         creating new directories if necessary (this behavior can be overridden).
@@ -492,8 +511,12 @@ class BidsArchive:
         # 2.0) Archive is empty and must be created
         if self.isEmpty():
             if makePath:
-                incremental.writeToDisk(self.rootPath)
-                self._updateLayout()
+                if useCache:
+                    self._appendToCache(incremental)
+                    self._layoutDirty = True
+                else:
+                    incremental.writeToDisk(self.rootPath)
+                    self._updateLayout()
                 return True
             else:
                 # If can't create new files in an empty archive, no valid append
@@ -529,6 +552,12 @@ class BidsArchive:
                 raise DimensionError("Expected image to have 3 or 4 dimensions "
                                      f"(got {nDimensions})")
 
+            # Append is fully valid at this point -- if using cache, cache it
+            # and return True
+            if useCache:
+                self._appendToCache(incremental)
+                return True
+
             if nDimensions == 3:
                 archiveData = np.expand_dims(archiveData, 3)
                 correct3DHeaderTo4D(archiveImg, incremental.getMetadataField(
@@ -551,18 +580,22 @@ class BidsArchive:
         # the archive; create new Nifti file within the archive
         if self.dirExistsInArchive(dataDirPath) or makePath:
             logger.debug("Image doesn't exist in archive, creating")
-            self._addImage(incremental.image, imgPath, updateLayout=False)
-            self._addMetadata(incremental.imageMetadata, metadataPath,
-                              updateLayout=False)
-            self._updateLayout()
+            # Append is fully valid at this point -- if using cache, cache it
+            # and return True
+            if useCache:
+                self._appendToCache(incremental)
+                self._layoutDirty = True
+            else:
+                incremental.writeToDisk(self.rootPath)
+                self._updateLayout()
             return True
 
         # 2.3) No image append possible and no creation possible; fail append
         return False
 
     @failIfEmpty
-    def getIncremental(self, imageIndex: int = 0, **entities) \
-            -> BidsIncremental:
+    def getIncremental(self, imageIndex: int = 0, useCache: bool = True,
+                       **entities) -> BidsIncremental:
         """
         Creates a BIDS Incremental from the specified part of the archive.
 
@@ -608,6 +641,22 @@ class BidsArchive:
         """
         if imageIndex < 0:
             raise IndexError(f"Image index must be >= 0 (got {imageIndex})")
+
+        volumeIndexErrorMsg = (f"Image index {imageIndex} too large for NIfTI "
+                               "volume of length {numImages}")
+
+        if useCache:
+            # Cache miss, reload cache with new entities
+            if self._getCache.getRunEntities() != entities:
+                self.flushCache()
+                self._getCache = self.getBidsRun(**entities)
+
+            # Cache current now, try to get target from cache
+            if imageIndex < self._getCache.numIncrementals():
+                return self._getCache.getIncremental(imageIndex)
+            else:
+                raise IndexError(volumeIndexErrorMsg.format(
+                    numImages=self._getCache.numIncrementals()))
 
         candidates = self.getImages(**entities)
 
@@ -661,7 +710,7 @@ class BidsArchive:
     def getBidsRun(self, **entities) -> BidsRun:
         images = self.getImages(**entities)
         if len(images) == 0:
-            raise QueryError(f"Found no runs matching entities {entities}")
+            raise NoMatchError(f"Found no runs matching entities {entities}")
         if len(images) > 1:
             entities = [img.get_entities() for img in images]
             raise QueryError("Provided entities were not unique to one run; "
@@ -671,6 +720,7 @@ class BidsArchive:
             bidsImage = images[0]
             niftiImage = niftiToMem(bidsImage.get_image())
             metadata = self.getSidecarMetadata(bidsImage)
+            metadata.pop('extension')  # only used in PyBids
 
             run = BidsRun(**bidsImage.get_entities())
             for imageIdx in range(niftiImage.header.get_data_shape()[3]):
@@ -678,19 +728,19 @@ class BidsArchive:
                                            niftiImage.affine,
                                            niftiImage.header)
                 newIncremental = BidsIncremental(newImage, metadata)
-                run.appendIncremental(newIncremental, unsafeAppend=True)
+                run.appendIncremental(newIncremental, validateAppend=False)
 
             return run
 
     def appendBidsRun(self, run: BidsRun) -> None:
         numIncrementals = run.numIncrementals()
+        logger.debug("Appending %s incrementals", numIncrementals)
         if numIncrementals == 0:
             return
 
         # Coalesce into a single BIDS-I
         refIncremental = run.getIncremental(0)
-        imageShape = refIncremental.imageDimensions
-        imageShape = imageShape[:3] + (numIncrementals,)
+        newImageShape = refIncremental.imageDimensions[:3] + (numIncrementals,)
         metadata = refIncremental.imageMetadata
 
         # It is critical to set the dtype of the array according to the source
@@ -701,7 +751,7 @@ class BidsArchive:
         # the original ints, which means images at either end of a round-trip
         # (read image data/put image data in numpy array/save image data/read
         # image from disk) will have arrays with slightly different values.
-        newDataArray = np.zeros(imageShape, order='F',
+        newDataArray = np.zeros(newImageShape, order='F',
                                 dtype=refIncremental.image.dataobj.dtype)
 
         for incIdx in range(numIncrementals):
@@ -711,7 +761,22 @@ class BidsArchive:
         newImage = refIncremental.image.__class__(newDataArray,
                                                   refIncremental.image.affine,
                                                   refIncremental.image.header)
+        logger.debug("New image shape: %s, header shape: %s", newImageShape,
+                     newImage.header.get_data_shape())
         consolidatedIncremental = BidsIncremental(newImage, metadata)
 
         # Append the single BIDS-I to the archive
-        self.appendIncremental(consolidatedIncremental)
+        self.appendIncremental(consolidatedIncremental, useCache=False)
+
+    def flushCache(self) -> None:
+        """
+        Flush the cache by writing back to disk, if necessary, and updating the
+        BIDSLayout view of disk, if necessary.
+        """
+        self.appendBidsRun(self._appendCache)
+        self._appendCache = BidsRun()
+
+        if self._layoutDirty:
+            self._updateLayout()
+            self._layoutDirty = False
+
