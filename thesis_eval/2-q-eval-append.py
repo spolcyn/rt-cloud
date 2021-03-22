@@ -2,6 +2,7 @@
 Tests the timing of appending as function of image and metadata size
 """
 
+import logging
 import os
 import shutil
 import subprocess
@@ -17,6 +18,8 @@ print(rtCloudDir)
 sys.path.append(rtCloudDir)
 from rtCommon.bidsIncremental import BidsIncremental
 from rtCommon.bidsArchive import BidsArchive
+
+logger = logging.getLogger(__name__)
 
 DATASET_DIR = 'datasets'
 DATASET_DIR_FMT = os.path.join(DATASET_DIR, '{}-download')
@@ -116,7 +119,7 @@ for dataset_idx, dataset_num in enumerate(DATASET_NUMBERS):
                         # Start the timer
                         startTime = time.process_time()
                         # Get
-                        incremental = archive.getIncremental(imageIndex=i, **entities)
+                        incremental = archive.getIncremental(imageIndex=i, **entities, useCache=True)
                         # Store get time in measurement data
                         timeTaken = time.process_time() - startTime
                         get_times.append(timeTaken)
@@ -134,7 +137,7 @@ for dataset_idx, dataset_num in enumerate(DATASET_NUMBERS):
         # Start the timer
         startTime = time.process_time()
         # Append
-        append_successful = new_archive.appendIncremental(incremental)
+        append_successful = new_archive.appendIncremental(incremental, useCache=True)
         # Store append time in measurement data
         timeTaken = time.process_time() - startTime
         assert append_successful
