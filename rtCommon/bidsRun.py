@@ -10,6 +10,7 @@ import logging
 
 from rtCommon.bidsCommon import (
     getNiftiData,
+    metadataAppendCompatible,
     niftiImagesAppendCompatible,
     symmetricDictDifference,
 )
@@ -48,7 +49,7 @@ class BidsRun:
             return self.incrementals[index]
         except IndexError:
             raise IndexError(f"Index {index} out of bounds for run with "
-                             f"{self.numVols()} incrementals")
+                             f"{self.numIncrementals()} incrementals")
 
     def appendIncremental(self, incremental: BidsIncremental,
                           validateAppend: bool = True) -> None:
@@ -64,8 +65,9 @@ class BidsRun:
                 known to be match already.
 
         Raises:
-            MetadataMismatchError: If either the incremental's entities or its
-                images's NIfTI header don't match the existing run's data.
+            MetadataMismatchError: If either the incremental's entities, its
+                images's NIfTI header, or its metadata doesn't match the
+                existing run's data.
         """
         # Set this run's entities if not already present
         if len(self._entities) == 0:
@@ -87,6 +89,15 @@ class BidsRun:
                 if not canAppend:
                     errorMsg = ("Incremental's NIfTI header not compatible "
                                 f" with this run's images ({niftiErrorMsg})")
+                    raise MetadataMismatchError(errorMsg)
+
+                canAppend, metadataErrorMsg = metadataAppendCompatible(
+                    incremental.imageMetadata,
+                    self.incrementals[-1].imageMetadata)
+
+                if not canAppend:
+                    errorMsg = ("Incremental's metadata not compatible "
+                                f" with this run's images ({metadataErrorMsg})")
                     raise MetadataMismatchError(errorMsg)
 
         # Slice up the incremental into smaller incrementals if it has multiple

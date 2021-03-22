@@ -42,7 +42,6 @@ from rtCommon.errors import (
     QueryError,
     StateError,
 )
-from rtCommon.imageHandling import niftiToMem
 
 # Silence future warning
 bc_set_option('extension_initial_dot', True)
@@ -456,7 +455,7 @@ class BidsArchive:
                           incremental: BidsIncremental,
                           makePath: bool = True,
                           validateAppend: bool = True,
-                          useCache: bool = True) -> bool:
+                          useCache: bool = False) -> bool:
         """
         Appends a BIDS Incremental's image data and metadata to the archive,
         creating new directories if necessary (this behavior can be overridden).
@@ -498,7 +497,6 @@ class BidsArchive:
         # 1) Create target paths for image in archive
         dataDirPath = incremental.dataDirPath
         imgPath = incremental.imageFilePath
-        metadataPath = incremental.metadataFilePath
 
         # 2) Verify we have a valid way to append the image to the archive.
         # 4 cases:
@@ -508,15 +506,19 @@ class BidsArchive:
         # the archive; create new Nifti file within the archive
         # 2.3) No image append possible and no creation possible; fail append
 
+        #
+        def writeIncremental(onlyData=False):
+            if useCache:
+                self._appendToCache(incremental)
+                self._layoutDirty = True
+            else:
+                incremental.writeToDisk(self.rootPath)
+                self._updateLayout()
+
         # 2.0) Archive is empty and must be created
         if self.isEmpty():
             if makePath:
-                if useCache:
-                    self._appendToCache(incremental)
-                    self._layoutDirty = True
-                else:
-                    incremental.writeToDisk(self.rootPath)
-                    self._updateLayout()
+                writeIncremental()
                 return True
             else:
                 # If can't create new files in an empty archive, no valid append
@@ -580,14 +582,7 @@ class BidsArchive:
         # the archive; create new Nifti file within the archive
         if self.dirExistsInArchive(dataDirPath) or makePath:
             logger.debug("Image doesn't exist in archive, creating")
-            # Append is fully valid at this point -- if using cache, cache it
-            # and return True
-            if useCache:
-                self._appendToCache(incremental)
-                self._layoutDirty = True
-            else:
-                incremental.writeToDisk(self.rootPath)
-                self._updateLayout()
+            writeIncremental(onlyData=True)
             return True
 
         # 2.3) No image append possible and no creation possible; fail append
@@ -660,7 +655,8 @@ class BidsArchive:
         if useCache:
             # Check if requested entities are subset of the ones in the cache
             # If they aren't, then they identify a different run (cache miss)
-            if not (entities.items() <= self._getCache.getRunEntities().items()):
+            if not (entities.items() <=
+                    self._getCache.getRunEntities().items()):
                 self.flushCache()
                 self._getCache = self.getBidsRun(**entities)
 
@@ -783,4 +779,3 @@ class BidsArchive:
         if self._layoutDirty:
             self._updateLayout()
             self._layoutDirty = False
-

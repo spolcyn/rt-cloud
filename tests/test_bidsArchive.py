@@ -1,5 +1,4 @@
 import logging
-import mmap
 from operator import eq as opeq
 import os
 from pathlib import Path
@@ -762,12 +761,6 @@ def testGetBidsRun(bidsArchiveMultipleRuns, sampleBidsEntities, sample4DNifti1,
     run = bidsArchiveMultipleRuns.getBidsRun(**sampleBidsEntities)
     assert run is not None
     assert run.numIncrementals() == sample4DNifti1.header.get_data_shape()[3]
-
-    # Ensure that the incremental's data is in memory by checking whether its
-    # base is either Python's mmap type or Numpy's memmap type
-    incremental = run.getIncremental(0)
-    assert not isinstance(getNiftiData(incremental.image).base, mmap.mmap)
-    assert not isinstance(getNiftiData(incremental.image).base, np.memmap)
 
 
 # Test appendBidsRun works with compatible images
