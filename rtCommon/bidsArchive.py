@@ -441,6 +441,11 @@ class BidsArchive:
             return results
 
     def _appendToCache(self, incremental: BidsIncremental):
+        """
+        Appends an incremental to the cache. Handles making a new cache if the
+        incremental is part of a new sequence, as well as adding the incremental
+        to the getCache if they represent the same run.
+        """
         if self._appendCache.getRunEntities() != incremental.entities:
             self.flushCache()
 
@@ -467,6 +472,12 @@ class BidsArchive:
             validateAppend: Compares image metadata and NIfTI headers to check
                 that the images being appended are part of the same sequence and
                 don't conflict with each other (default: True).
+            useCache: Put incrementals in a cache before writing to disk. This
+                substantially improves performance when writing a whole run in
+                sequence. However, it can cause issues as querying the archive
+                (e.g., getImages) will not return data in the cache until that
+                data is flushed using flushCache. Thus, it is False by default
+                so only intentional use occurs.
 
         Raises:
             RuntimeError: If the image to append to in the archive is not either
@@ -598,6 +609,8 @@ class BidsArchive:
             imageIndex: Index of 3-D image to select in a 4-D image volume.
             entities: Keyword arguments for entities to filter by. Provide in
                 the format entity='value'.
+            useCache: Use the cache to load incrementals (this may improve
+                performance when reading full runs at a time).
 
         Returns:
             BIDS-Incremental file with the specified image of the archive and
@@ -705,6 +718,26 @@ class BidsArchive:
 
     @failIfEmpty
     def getBidsRun(self, **entities) -> BidsRun:
+        """
+        Get a BIDS Run from the archive.
+
+        Args:
+            entities: Entities defining a run in the archive.
+
+        Returns:
+            A BidsRun containing all the BidsIncrementals in the specified run.
+
+        Raises:
+            NoMatchError: If the entities don't match any runs in the archive.
+            QueryError: If the entities match more than one run in the archive.
+
+        Examples:
+            >>> archive = BidsArchive('/tmp/dataset')
+            >>> run = archive.getBidsRun(subject='01', session='02',
+                                         task='test-task', run=1)
+            >>> print(run.numIncrementals())
+            53
+        """
         images = self.getImages(**entities)
         if len(images) == 0:
             raise NoMatchError(f"Found no runs matching entities {entities}")
@@ -733,6 +766,24 @@ class BidsArchive:
             return run
 
     def appendBidsRun(self, run: BidsRun) -> None:
+        """
+        Append a BIDS Run to this archive.
+
+        Args:
+            run: Run to append to the archvie.
+
+        Examples:
+            >>> archive1 = BidsArchive('/tmp/dataset1')
+            >>> archive2 = BidsArchive('/tmp/dataset2')
+            >>> archive1.getRuns()
+            [1, 2]
+            >>> archive2.getRuns()
+            [1]
+            >>> run2 = archive1.getBidsRun(subject='01', task='test', run=2)
+            >>> archive2.appendBidsRun(run2)
+            >>> archive2.getRuns()
+            [1, 2]
+        """
         numIncrementals = run.numIncrementals()
         if numIncrementals == 0:
             return
