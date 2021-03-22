@@ -645,19 +645,6 @@ class BidsArchive:
         volumeIndexErrorMsg = (f"Image index {imageIndex} too large for NIfTI "
                                "volume of length {numImages}")
 
-        if useCache:
-            # Cache miss, reload cache with new entities
-            if self._getCache.getRunEntities() != entities:
-                self.flushCache()
-                self._getCache = self.getBidsRun(**entities)
-
-            # Cache current now, try to get target from cache
-            if imageIndex < self._getCache.numIncrementals():
-                return self._getCache.getIncremental(imageIndex)
-            else:
-                raise IndexError(volumeIndexErrorMsg.format(
-                    numImages=self._getCache.numIncrementals()))
-
         candidates = self.getImages(**entities)
 
         # Throw error if not exactly one match
@@ -668,6 +655,21 @@ class BidsArchive:
             raise QueryError("Provided entities matched more than one image "
                              "file; try specifying more to narrow to one match "
                              f"(expected 1, got {len(candidates)})")
+
+        # Confirmed that entities specify a unique run, so can use or fill cache
+        if useCache:
+            # Check if requested entities are subset of the ones in the cache
+            # If they aren't, then they identify a different run (cache miss)
+            if not (entities.items() <= self._getCache.getRunEntities().items()):
+                self.flushCache()
+                self._getCache = self.getBidsRun(**entities)
+
+            # Cache current now, try to get target from cache
+            if imageIndex < self._getCache.numIncrementals():
+                return self._getCache.getIncremental(imageIndex)
+            else:
+                raise IndexError(volumeIndexErrorMsg.format(
+                    numImages=self._getCache.numIncrementals()))
 
         # Create BIDS-I
         candidate = candidates[0]
@@ -683,8 +685,7 @@ class BidsArchive:
             numImages = image.dataobj.shape[3]
 
             if imageIndex < numImages:
-                # Directly slice Nibabel dataobj for increased memory efficiency
-                image = image.__class__(image.dataobj[..., imageIndex],
+                image = image.__class__(getNiftiData(image)[..., imageIndex],
                                         affine=image.affine,
                                         header=image.header)
                 image.update_header()
@@ -718,15 +719,18 @@ class BidsArchive:
                              f" (got runs with these entities: {entities}")
         else:
             bidsImage = images[0]
-            niftiImage = niftiToMem(bidsImage.get_image())
+            niftiImage = bidsImage.get_image()
+            niftiData = getNiftiData(niftiImage)
             metadata = self.getSidecarMetadata(bidsImage)
             metadata.pop('extension')  # only used in PyBids
 
             run = BidsRun(**bidsImage.get_entities())
             for imageIdx in range(niftiImage.header.get_data_shape()[3]):
-                newImage = nib.Nifti1Image(niftiImage.dataobj[..., imageIdx],
+                newData = niftiData[..., imageIdx]
+                newImage = nib.Nifti1Image(newData,
                                            niftiImage.affine,
                                            niftiImage.header)
+
                 newIncremental = BidsIncremental(newImage, metadata)
                 run.appendIncremental(newIncremental, validateAppend=False)
 
