@@ -734,39 +734,11 @@ class BidsArchive:
 
     def appendBidsRun(self, run: BidsRun) -> None:
         numIncrementals = run.numIncrementals()
-        logger.debug("Appending %s incrementals", numIncrementals)
         if numIncrementals == 0:
             return
 
-        # Coalesce into a single BIDS-I
-        refIncremental = run.getIncremental(0)
-        newImageShape = refIncremental.imageDimensions[:3] + (numIncrementals,)
-        metadata = refIncremental.imageMetadata
+        self.appendIncremental(run.asSingleIncremental(), useCache=False)
 
-        # It is critical to set the dtype of the array according to the source
-        # image's dtype. Without doing so, int data may be cast to float (the
-        # numpy default type for a new array), which Nibabel will then write
-        # float data to disk using the NIfTI scl_scope header scaling field.
-        # This procedure almost always results in less precision than offered by
-        # the original ints, which means images at either end of a round-trip
-        # (read image data/put image data in numpy array/save image data/read
-        # image from disk) will have arrays with slightly different values.
-        newDataArray = np.zeros(newImageShape, order='F',
-                                dtype=refIncremental.image.dataobj.dtype)
-
-        for incIdx in range(numIncrementals):
-            incremental = run.getIncremental(incIdx)
-            newDataArray[..., incIdx] = getNiftiData(incremental.image)[..., 0]
-
-        newImage = refIncremental.image.__class__(newDataArray,
-                                                  refIncremental.image.affine,
-                                                  refIncremental.image.header)
-        logger.debug("New image shape: %s, header shape: %s", newImageShape,
-                     newImage.header.get_data_shape())
-        consolidatedIncremental = BidsIncremental(newImage, metadata)
-
-        # Append the single BIDS-I to the archive
-        self.appendIncremental(consolidatedIncremental, useCache=False)
 
     def flushCache(self) -> None:
         """

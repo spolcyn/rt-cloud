@@ -1,8 +1,10 @@
 import logging
 
 import nibabel as nib
+import numpy as np
 import pytest
 
+from rtCommon.bidsCommon import getNiftiData
 from rtCommon.bidsIncremental import BidsIncremental
 from rtCommon.bidsRun import BidsRun
 from rtCommon.errors import MetadataMismatchError
@@ -129,4 +131,23 @@ def testAppendConflictingNiftiHeaders(oneImageBidsI):
     # Append should work now with validateAppend turned off
     numIncrementalsBefore = run.numIncrementals()
     run.appendIncremental(bidsInc2, validateAppend=False)
-    alssert run.numIncrementals() == (numIncrementalsBefore + 1)
+    assert run.numIncrementals() == (numIncrementalsBefore + 1)
+
+# Test consolidation into single incremental works as expected
+def testAsSingleIncremental(oneImageBidsI):
+    run = BidsRun()
+    NUM_APPENDS = 5
+    for i in range(NUM_APPENDS):
+        run.appendIncremental(oneImageBidsI)
+
+    oldImage = oneImageBidsI.image
+    imageData = getNiftiData(oldImage)
+    newDataShape = imageData.shape[:3] + (NUM_APPENDS,)
+    newData = np.zeros(newDataShape, dtype=imageData.dtype)
+    for i in range(NUM_APPENDS):
+        newData[..., i] = imageData[..., 0]
+
+    newImage = oldImage.__class__(newData, oldImage.affine, oldImage.header)
+    consolidatedBidsI = BidsIncremental(newImage, oneImageBidsI.imageMetadata)
+
+    assert run.asSingleIncremental() == consolidatedBidsI
