@@ -18,6 +18,7 @@ print(rtCloudDir)
 sys.path.append(rtCloudDir)
 from rtCommon.bidsIncremental import BidsIncremental
 from rtCommon.bidsArchive import BidsArchive
+from rtCommon.bidsRun import BidsRun
 
 logger = logging.getLogger(__name__)
 
@@ -25,10 +26,14 @@ DATASET_DIR = 'datasets'
 DATASET_DIR_FMT = os.path.join(DATASET_DIR, '{}-download')
 TARGET_DIR = 'tmp_out'
 tmpdir = tempfile.gettempdir()
+print("Temp dir:", tmpdir)
 
 DATASET_NUMBERS = ['ds000138', 'ds003090', 'ds002750', 'ds002733', 'ds002551']
 # others:
 # ds003440: 815.49MB
+
+TESTING_NEW = True
+TESTING_OLD = not TESTING_NEW
 
 def prod(t1):
     # Returns product of tuple elements
@@ -88,8 +93,9 @@ for dataset_idx, dataset_num in enumerate(DATASET_NUMBERS):
     currentImageShape = None
 
     # Get all the incrementals into a list
-    incrementals = []
+    # incrementals = []
     get_times = [] 
+    bids_runs = []
 
     for subject in tqdm(subjects, "Subjects", position=0):
         for task in tqdm(tasks, "Tasks", position=1, leave=False):
@@ -127,16 +133,26 @@ for dataset_idx, dataset_num in enumerate(DATASET_NUMBERS):
                     else:
                         prod(image.shape[:3]) == prod(currentImageShape[:3]), "Image.shape: {}, Current: {}".format(image.shape, currentImageShape)
 
+                    current_run = None
                     # Loop over all images in the volume until all possible incrementals are extracted
                     for i in range(images_in_volume):
                         # Start the timer
                         startTime = time.process_time()
-                        # Get
-                        incremental = archive.getIncremental(imageIndex=i, **entities, useCache=True)
+                        if TESTING_NEW:
+                            if current_run is None:
+                                current_run = archive.getBidsRun(**entities)
+                            # Get
+                            incremental = current_run.getIncremental(i)
+                        elif TESTING_OLD:
+                            incremental = archive._getIncremental(**entites)
+                        else:
+                            assert False
                         # Store get time in measurement data
                         timeTaken = time.process_time() - startTime
                         get_times.append(timeTaken)
-                        incrementals.append(incremental)
+
+                    bids_runs.append(current_run)
+
 
     # Create the path to the new archive
     new_archive_path = os.path.join(tmpdir, "2-q-eval", "{}-new".format(dataset_num))
@@ -144,17 +160,36 @@ for dataset_idx, dataset_num in enumerate(DATASET_NUMBERS):
     new_archive = BidsArchive(new_archive_path)
     append_times = []
 
+    print("Opened archive", new_archive_path, "for reading")
+
     # Loop over all incrementals until the archive is fully remade
     append_successful = False
-    for incremental in tqdm(incrementals, desc="Incrementals"):
-        # Start the timer
-        startTime = time.process_time()
-        # Append
-        append_successful = new_archive.appendIncremental(incremental, useCache=True)
-        # Store append time in measurement data
-        timeTaken = time.process_time() - startTime
-        assert append_successful
-        append_times.append(timeTaken)
+
+    for run in tqdm(bids_runs, desc="BIDS Runs", position=1):
+        new_run = BidsRun()
+        for i in tqdm(range(run.numIncrementals()), desc="Incrementals", leave=False):
+            incremental = run.getIncremental(i)
+            if TESTING_NEW:
+                # Start the timer
+                startTime = time.process_time()
+                # Append
+                new_run.appendIncremental(incremental)
+                # Store append time in measurement data
+                timeTaken = time.process_time() - startTime
+                if (i + 1) == run.numIncrementals():
+                    startTime = time.process_time()
+                    new_archive.appendBidsRun(new_run)
+                    timeTaken = time.process_time() - startTime + timeTaken
+                    run = BidsRun()
+            elif TESTING_OLD:
+                # Start the timer
+                startTime = time.process_time()
+                # Append
+                new_archive._appendIncremental(incremental)
+                # Store append time in measurement data
+                timeTaken = time.process_time() - startTime
+
+            append_times.append(timeTaken)
 
     # Store the data for later processing
     op_data_dict = {'get': get_times, 'append': append_times}
@@ -163,6 +198,8 @@ for dataset_idx, dataset_num in enumerate(DATASET_NUMBERS):
 
 # Aggregate, summarize, and output get and append data
 stats_dict = {'stddev': np.std, 'mean': np.mean, 'min': np.min, 'max': np.max, 'sum': np.sum}
+
+new_old_string = "new" if TESTING_NEW else "old"
 
 for dataset_num, list_dict in measurement_data.items():
     for op_name, data_list in list_dict.items():
@@ -176,6 +213,7 @@ for dataset_num, list_dict in measurement_data.items():
 
         header_string = desc_string + stat_string
         # Output data
-        output_path = os.path.join("get-append-eval", "{}-eval-{}.txt".format(dataset_num, op_name))
+        output_path = os.path.join("get-append-eval", "{}-eval-{}-{}.txt".format(
+            dataset_num, op_name, new_old_string))
         np.savetxt(output_path, data_array, header=header_string)
 
