@@ -30,6 +30,13 @@ DATASET_NUMBERS = ['ds000138', 'ds003090', 'ds002750', 'ds002733', 'ds002551']
 # others:
 # ds003440: 815.49MB
 
+def prod(t1):
+    # Returns product of tuple elements
+    prd = 1
+    for el in t1:
+        prd *= el
+    return prd
+
 # download datasets
 for dataset_num in DATASET_NUMBERS:
     dataset_path = DATASET_DIR_FMT.format(dataset_num)
@@ -103,16 +110,22 @@ for dataset_idx, dataset_num in enumerate(DATASET_NUMBERS):
                     image = images[0].get_image()
                     images_in_volume = image.shape[3]
 
-                    # All images should have the same 3-D dimensions, but
+                    # All images should have the same number of voxels, but
                     # confirm that here just to be sure by setting the image
                     # shape for the first image, and making sure all future
-                    # images match that shape. 4th dimensions (time) may
-                    # differ, so don't check that.
+                    # images have the same number of voxels. 4th dimensions
+                    # (time) may differ, so don't check that, and some studies
+                    # seem to swap dimensions some times (e.g., sometimes they
+                    # have (50, 40, 30, 20) and other images are (50, 30, 40,
+                    # 20). Since all we're concerned about is the voxel size
+                    # for the images in each run, this is ok.  See OpenNeuro
+                    # DS003090 as an example -- sub-2006 and sub-2011 have a
+                    # dimension inverted.
                     if currentImageShape is None:
                         currentImageShape = image.shape
                         shape_dict[dataset_num] = currentImageShape
                     else:
-                        assert image.shape[:3] == currentImageShape[:3], "Image.shape: {}, Current: {}".format(image.shape, currentImageShape)
+                        prod(image.shape[:3]) == prod(currentImageShape[:3]), "Image.shape: {}, Current: {}".format(image.shape, currentImageShape)
 
                     # Loop over all images in the volume until all possible incrementals are extracted
                     for i in range(images_in_volume):
