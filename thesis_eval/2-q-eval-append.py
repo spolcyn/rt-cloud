@@ -2,6 +2,7 @@
 Tests the timing of appending as function of image and metadata size
 """
 
+import gc
 import logging
 import os
 import shutil
@@ -12,6 +13,7 @@ import time
 
 import numpy as np
 from tqdm import tqdm
+from bids.exceptions import NoMatchError
 
 rtCloudDir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 print(rtCloudDir)
@@ -28,11 +30,12 @@ TARGET_DIR = 'tmp_out'
 tmpdir = tempfile.gettempdir()
 print("Temp dir:", tmpdir)
 
-DATASET_NUMBERS = ['ds000138', 'ds003090', 'ds002750', 'ds002733', 'ds002551']
+# DATASET_NUMBERS = ['ds002551', 'ds003090', 'ds000138', 'ds002750', 'ds002733']
+DATASET_NUMBERS = ['ds003090']
 # others:
 # ds003440: 815.49MB
 
-TESTING_NEW = True
+TESTING_NEW = False
 TESTING_OLD = not TESTING_NEW
 
 def prod(t1):
@@ -68,6 +71,7 @@ SUM_INDEX = 0
 COUNT_INDEX = 1
 measurement_data = {}
 shape_dict = {}
+incrementals = []
 
 # For each dataset;
 for dataset_idx, dataset_num in enumerate(DATASET_NUMBERS):
@@ -76,24 +80,25 @@ for dataset_idx, dataset_num in enumerate(DATASET_NUMBERS):
     archive = BidsArchive(DATASET_DIR_FMT.format(dataset_num))
 
     # Setup the metadata to get all the incrementals from the archive
-    runs = archive.getRuns()
-    tasks = archive.getTasks()
     subjects = archive.getSubjects()
+    tasks = archive.getTasks()
     sessions = archive.getSessions()
+    runs = archive.getRuns()
+
+    # Some lists may be empty, so make them have at least 'None' in them so
+    # they still can be iterated over and the inner run loop can be executed
+    for maybe_empty_list in [runs, sessions]:
+        if len(maybe_empty_list) == 0:
+            maybe_empty_list.append(None)
 
     print('subjects:', subjects)
     print('tasks:', tasks)
     print('sessions:', sessions)
     print('runs:', runs)
 
-    for maybe_empty_list in [runs, sessions]:
-        if len(maybe_empty_list) == 0:
-            maybe_empty_list.append(None)
-
     currentImageShape = None
 
     # Get all the incrementals into a list
-    # incrementals = []
     get_times = [] 
     bids_runs = []
 
@@ -135,7 +140,7 @@ for dataset_idx, dataset_num in enumerate(DATASET_NUMBERS):
 
                     current_run = None
                     # Loop over all images in the volume until all possible incrementals are extracted
-                    for i in range(images_in_volume):
+                    for i in tqdm(range(images_in_volume), "Images in volume", position=4, leave=False):
                         # Start the timer
                         startTime = time.process_time()
                         if TESTING_NEW:
@@ -144,14 +149,17 @@ for dataset_idx, dataset_num in enumerate(DATASET_NUMBERS):
                             # Get
                             incremental = current_run.getIncremental(i)
                         elif TESTING_OLD:
-                            incremental = archive._getIncremental(**entites)
+                            incremental = archive._getIncremental(**entities)
                         else:
                             assert False
                         # Store get time in measurement data
                         timeTaken = time.process_time() - startTime
                         get_times.append(timeTaken)
+                        if TESTING_OLD:
+                            incrementals.append(incremental)
 
-                    bids_runs.append(current_run)
+                    if TESTING_NEW:
+                        bids_runs.append(current_run)
 
 
     # Create the path to the new archive
@@ -165,35 +173,63 @@ for dataset_idx, dataset_num in enumerate(DATASET_NUMBERS):
     # Loop over all incrementals until the archive is fully remade
     append_successful = False
 
-    for run in tqdm(bids_runs, desc="BIDS Runs", position=1):
-        new_run = BidsRun()
-        for i in tqdm(range(run.numIncrementals()), desc="Incrementals", leave=False):
-            incremental = run.getIncremental(i)
-            if TESTING_NEW:
+    if TESTING_NEW:
+        for bids_run in tqdm(bids_runs, desc="BIDS Runs", position=1):
+            new_run = BidsRun()
+            for i in tqdm(range(bids_run.numIncrementals()), desc="Incrementals", leave=False):
+                incremental = bids_run.getIncremental(i)
                 # Start the timer
                 startTime = time.process_time()
                 # Append
                 new_run.appendIncremental(incremental)
                 # Store append time in measurement data
                 timeTaken = time.process_time() - startTime
-                if (i + 1) == run.numIncrementals():
+                
+                # If it's the last incremental, also append to the archive
+                if (i + 1) == bids_run.numIncrementals():
                     startTime = time.process_time()
                     new_archive.appendBidsRun(new_run)
                     timeTaken = time.process_time() - startTime + timeTaken
-                    run = BidsRun()
-            elif TESTING_OLD:
-                # Start the timer
-                startTime = time.process_time()
-                # Append
-                new_archive._appendIncremental(incremental)
-                # Store append time in measurement data
-                timeTaken = time.process_time() - startTime
 
+                append_times.append(timeTaken)
+
+    elif TESTING_OLD:
+        for incremental in tqdm(incrementals, desc="Incrementals", position=1):
+            # Start the timer
+            startTime = time.process_time()
+            # Append
+            new_archive._appendIncremental(incremental)
+            # Store append time in measurement data
+            timeTaken = time.process_time() - startTime
             append_times.append(timeTaken)
+
 
     # Store the data for later processing
     op_data_dict = {'get': get_times, 'append': append_times}
     measurement_data[dataset_num] = op_data_dict
+    incrementals = []
+
+    gc.collect()
+
+    # Verify correctness
+    """
+    print("Verifying correctness")
+    for subject in tqdm(subjects, "Subjects", position=0):
+        for task in tqdm(tasks, "Tasks", position=1, leave=False):
+            for session in tqdm(sessions, "Sessions", position=2, leave=False):
+                for run in tqdm(runs, "Runs", position=3, leave=False):
+                    entities = {'subject': subject, 'task': task, 'session': session, 'run': run, 
+                                'datatype': 'func'}
+                    # filter out the None entities
+                    entities = {e: entities[e] for e in entities if entities[e] is not None}
+
+                    try:
+                        run1 = archive.getBidsRun(**entities)
+                        run2 = new_archive.getBidsRun(**entities)
+                        # assert run1 == run2
+                    except NoMatchError:
+                        continue  # skip
+    """
 
 
 # Aggregate, summarize, and output get and append data

@@ -2,6 +2,7 @@
 Tests the timing for serialization & deserialization as function of nifti image size
 """
 
+import gc
 import os
 import pickle
 import sys
@@ -24,6 +25,8 @@ paths = [PATH_FMT_STRING.format(i) for i in range(1, 6)]
 
 # Read in NIfTI images to memory
 images = [readNifti(path) for path in paths]
+sizes = [i.shape for i in images]
+print(sizes)
 
 # Setup list of BIDS-I objects
 testMetadata = {'subject': '01', 'task': 'test', 'suffix': 'bold', 'datatype': 'func', 
@@ -62,4 +65,4 @@ averages = np.average(measurement_data, axis=2)
 
 # Output the 2-D matrix as a CSV file for chart generation in Excel, as matplotlib is fiddly
 averages *= 1000
-np.savetxt('dataout-ms.txt', averages, delimiter=',', header='Serialize Average Time (ms), Deserialize Average Time (ms)')
+np.savetxt('1-q-ms.txt', averages, delimiter=',', header=f'Serialize Average Time (ms), Deserialize Average Time (ms)\nSizes: {sizes}')

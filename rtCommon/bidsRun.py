@@ -33,20 +33,20 @@ class BidsRun:
 
     def __eq__(self, other):
         if self.numIncrementals() != other.numIncrementals():
-            return False
+            assert False
         if self.getRunEntities() != other.getRunEntities():
-            return False
+            assert False
         if self._imageMetadata != other._imageMetadata:
             return False
         if not np.array_equal(self._imageHeader, other._imageHeader):
             return False
         if not np.array_equal(self._imageAffine, other._imageAffine):
-            return False
+            assert False
         if self._imageKlass != other._imageKlass:
-            return False
+            assert False
         for (arr1, arr2) in zip(self._dataArrays, other._dataArrays):
             if not np.array_equal(arr1, arr2):
-                return False
+                assert False
 
         return True
 
