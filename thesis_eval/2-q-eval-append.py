@@ -30,10 +30,9 @@ TARGET_DIR = 'tmp_out'
 tmpdir = tempfile.gettempdir()
 print("Temp dir:", tmpdir)
 
-# DATASET_NUMBERS = ['ds002551', 'ds003090', 'ds000138', 'ds002750', 'ds002733']
-DATASET_NUMBERS = ['ds003090']
+# DATASET_NUMBERS = ['ds002551', 'ds003440', 'ds000138', 'ds002750', 'ds002733']
+DATASET_NUMBERS = ['ds002551']
 # others:
-# ds003440: 815.49MB
 
 TESTING_NEW = False
 TESTING_OLD = not TESTING_NEW
@@ -102,7 +101,7 @@ for dataset_idx, dataset_num in enumerate(DATASET_NUMBERS):
     get_times = [] 
     bids_runs = []
 
-    for subject in tqdm(subjects, "Subjects", position=0):
+    for subject in tqdm(subjects[:1], "Subjects", position=0):
         for task in tqdm(tasks, "Tasks", position=1, leave=False):
             for session in tqdm(sessions, "Sessions", position=2, leave=False):
                 for run in tqdm(runs, "Runs", position=3, leave=False):
@@ -142,18 +141,22 @@ for dataset_idx, dataset_num in enumerate(DATASET_NUMBERS):
                     # Loop over all images in the volume until all possible incrementals are extracted
                     for i in tqdm(range(images_in_volume), "Images in volume", position=4, leave=False):
                         # Start the timer
-                        startTime = time.process_time()
                         if TESTING_NEW:
                             if current_run is None:
+                                startTime = time.process_time()
                                 current_run = archive.getBidsRun(**entities)
+                            else:
+                                startTime = time.process_time()
                             # Get
                             incremental = current_run.getIncremental(i)
+                            timeTaken = time.process_time() - startTime
                         elif TESTING_OLD:
+                            startTime = time.process_time()
                             incremental = archive._getIncremental(**entities)
+                            timeTaken = time.process_time() - startTime
                         else:
                             assert False
                         # Store get time in measurement data
-                        timeTaken = time.process_time() - startTime
                         get_times.append(timeTaken)
                         if TESTING_OLD:
                             incrementals.append(incremental)
@@ -194,6 +197,8 @@ for dataset_idx, dataset_num in enumerate(DATASET_NUMBERS):
                 append_times.append(timeTaken)
 
     elif TESTING_OLD:
+        append_times = np.zeros((len(incrementals),))
+        counter = 0
         for incremental in tqdm(incrementals, desc="Incrementals", position=1):
             # Start the timer
             startTime = time.process_time()
@@ -201,7 +206,9 @@ for dataset_idx, dataset_num in enumerate(DATASET_NUMBERS):
             new_archive._appendIncremental(incremental)
             # Store append time in measurement data
             timeTaken = time.process_time() - startTime
-            append_times.append(timeTaken)
+            # append_times.append(timeTaken)
+            append_times[counter] = timeTaken
+            counter += 1
 
 
     # Store the data for later processing
