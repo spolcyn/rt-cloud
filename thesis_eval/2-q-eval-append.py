@@ -32,9 +32,10 @@ print("Temp dir:", tmpdir)
 
 # DATASET_NUMBERS = ['ds002551', 'ds003440', 'ds000138', 'ds002750', 'ds002733']
 DATASET_NUMBERS = ['ds002551']
+# DATASET_NUMBERS = ['ds003440']
 # others:
 
-TESTING_NEW = False
+TESTING_NEW = True
 TESTING_OLD = not TESTING_NEW
 
 def prod(t1):
@@ -101,7 +102,7 @@ for dataset_idx, dataset_num in enumerate(DATASET_NUMBERS):
     get_times = [] 
     bids_runs = []
 
-    for subject in tqdm(subjects[:1], "Subjects", position=0):
+    for subject in tqdm(subjects, "Subjects", position=0):
         for task in tqdm(tasks, "Tasks", position=1, leave=False):
             for session in tqdm(sessions, "Sessions", position=2, leave=False):
                 for run in tqdm(runs, "Runs", position=3, leave=False):
@@ -164,51 +165,54 @@ for dataset_idx, dataset_num in enumerate(DATASET_NUMBERS):
                     if TESTING_NEW:
                         bids_runs.append(current_run)
 
-
-    # Create the path to the new archive
-    new_archive_path = os.path.join(tmpdir, "2-q-eval", "{}-new".format(dataset_num))
-    shutil.rmtree(new_archive_path, ignore_errors=True)
-    new_archive = BidsArchive(new_archive_path)
+    NO_APPEND = False
     append_times = []
+    if not NO_APPEND:
 
-    print("Opened archive", new_archive_path, "for reading")
+        # Create the path to the new archive
+        new_archive_path = os.path.join(tmpdir, "2-q-eval", "{}-new".format(dataset_num))
+        shutil.rmtree(new_archive_path, ignore_errors=True)
+        new_archive = BidsArchive(new_archive_path)
+        append_times = []
 
-    # Loop over all incrementals until the archive is fully remade
-    append_successful = False
+        print("Opened archive", new_archive_path, "for reading")
 
-    if TESTING_NEW:
-        for bids_run in tqdm(bids_runs, desc="BIDS Runs", position=1):
-            new_run = BidsRun()
-            for i in tqdm(range(bids_run.numIncrementals()), desc="Incrementals", leave=False):
-                incremental = bids_run.getIncremental(i)
+        # Loop over all incrementals until the archive is fully remade
+        append_successful = False
+
+        if TESTING_NEW:
+            for bids_run in tqdm(bids_runs, desc="BIDS Runs", position=1):
+                new_run = BidsRun()
+                for i in tqdm(range(bids_run.numIncrementals()), desc="Incrementals", leave=False):
+                    incremental = bids_run.getIncremental(i)
+                    # Start the timer
+                    startTime = time.process_time()
+                    # Append
+                    new_run.appendIncremental(incremental)
+                    # Store append time in measurement data
+                    timeTaken = time.process_time() - startTime
+                    
+                    # If it's the last incremental, also append to the archive
+                    if (i + 1) == bids_run.numIncrementals():
+                        startTime = time.process_time()
+                        new_archive.appendBidsRun(new_run)
+                        timeTaken = time.process_time() - startTime + timeTaken
+
+                    append_times.append(timeTaken)
+
+        elif TESTING_OLD:
+            append_times = np.zeros((len(incrementals),))
+            counter = 0
+            for incremental in tqdm(incrementals, desc="Incrementals", position=1):
                 # Start the timer
                 startTime = time.process_time()
                 # Append
-                new_run.appendIncremental(incremental)
+                new_archive._appendIncremental(incremental)
                 # Store append time in measurement data
                 timeTaken = time.process_time() - startTime
-                
-                # If it's the last incremental, also append to the archive
-                if (i + 1) == bids_run.numIncrementals():
-                    startTime = time.process_time()
-                    new_archive.appendBidsRun(new_run)
-                    timeTaken = time.process_time() - startTime + timeTaken
-
-                append_times.append(timeTaken)
-
-    elif TESTING_OLD:
-        append_times = np.zeros((len(incrementals),))
-        counter = 0
-        for incremental in tqdm(incrementals, desc="Incrementals", position=1):
-            # Start the timer
-            startTime = time.process_time()
-            # Append
-            new_archive._appendIncremental(incremental)
-            # Store append time in measurement data
-            timeTaken = time.process_time() - startTime
-            # append_times.append(timeTaken)
-            append_times[counter] = timeTaken
-            counter += 1
+                # append_times.append(timeTaken)
+                append_times[counter] = timeTaken
+                counter += 1
 
 
     # Store the data for later processing
@@ -217,6 +221,10 @@ for dataset_idx, dataset_num in enumerate(DATASET_NUMBERS):
     incrementals = []
 
     gc.collect()
+
+    # TEMP REMOVE ME when done testing just get
+    # print('Measurement Data max get\n', max(measurement_data[dataset_num]['get']))
+    # exit()
 
     # Verify correctness
     """
