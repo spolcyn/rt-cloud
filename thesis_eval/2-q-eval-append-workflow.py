@@ -38,6 +38,7 @@ print("Temp dir:", tmpdir)
 DATASET_NUMBERS = ['ds002551', 'ds002551', 'ds003440', 'ds000138', 'ds002750', 'ds002733']
 # DATASET_NUMBERS = ['ds002551']
 # DATASET_NUMBERS = ['ds003440']
+# DATASET_NUMBERS = ['ds002750']
 
 TESTING_NEW = True
 TESTING_OLD = not TESTING_NEW
@@ -147,11 +148,10 @@ def run_archive_loop(dataset_num, per_run_fn):
 
                     per_run_fn(image=image, images_in_volume=images_in_volume,
                                 sidecar_metadata=sidecar_metadata,
-                                bids_run=archive.getBidsRun(**entities),
+                                entities=entities,
                                 archive=archive, new_archive=new_archive,
                                 subject=subject, task=task, session=session,
                                 run=run)
-
 
 def analyze_workflow2(dataset_num):
     # Workflow 2: MRI Machine -> Incremental -> Run -> Archive
@@ -161,15 +161,18 @@ def analyze_workflow2(dataset_num):
     keys = ['serialize', 'deserialize', 'appendIncremental', 'appendBidsRun']
     workflow2_data_dict = {key: [] for key in keys}
 
-    def per_run_fn(bids_run, images_in_volume, new_archive, **kwargs):
+    def per_run_fn(images_in_volume, new_archive, archive, entities, **kwargs):
         # The working BIDS Run we'll add to
         current_run = BidsRun()
+
+        # The BIDS Run we're getting data from, simulating the MRI machine
+        data_source_run = archive.getBidsRun(**entities)
 
         # Loop over all incrementals in the run
         for i in tqdm(range(images_in_volume), "Images in volume", position=4,
                       leave=False):
             # Get the incremental
-            incremental = bids_run.getIncremental(i)
+            incremental = data_source_run.getIncremental(i)
 
             if TESTING_NEW:
                 # Do serialization/deserialization round trip
@@ -201,10 +204,56 @@ def analyze_workflow2(dataset_num):
     # Now return the dictionary for json dumping
     return workflow2_data_dict
 
-dsnum = DATASET_NUMBERS[0]
-result = analyze_workflow2(dsnum)
-with open(dsnum + '-workflow2.txt', 'w') as f:
-    json.dump(result, f)
+def run_and_write_workflow2():
+    dsnum = DATASET_NUMBERS[0]
+    result = analyze_workflow2(dsnum)
+    with open(os.path.join('workflow2', dsnum + '-workflow2.txt'), 'w') as f:
+        json.dump(result, f)
+
+def analyze_workflow3(dataset_num):
+    # Workflow 3: BIDS Archive -> BIDS Run -> BIDS Incremental -> Analysis Model
+    print("Running workflow3 for dataset", dataset_num)
+
+    # These are the operations we'll store data for
+    keys = ['getBidsRun', 'getIncremental', 'serialize', 'deserialize']
+    workflow3_data_dict = {key: [] for key in keys}
+
+    def per_run_fn(images_in_volume, archive, entities, **kwargs):
+        # The working BIDS Run we'll get from
+        startTime = time.process_time()
+        current_run = archive.getBidsRun(**entities)
+        timeTaken = time.process_time() - startTime
+        workflow3_data_dict['getBidsRun'].append(timeTaken)
+
+        # Loop over all incrementals in the run
+        for i in tqdm(range(current_run.numIncrementals()), "Images in volume", position=4,
+                      leave=False):
+            # Get the incremental
+            startTime = time.process_time()
+            incremental = current_run.getIncremental(i)
+            timeTaken = time.process_time() - startTime
+            workflow3_data_dict['getIncremental'].append(timeTaken)
+
+            # Do serialization/deserialization round trip
+            startTime = time.process_time()
+            serialized_incremental = pickle.dumps(incremental)
+            timeTaken = time.process_time() - startTime
+            workflow3_data_dict['serialize'].append(timeTaken)
+
+            startTime = time.process_time()
+            incremental = pickle.loads(serialized_incremental)
+            timeTaken = time.process_time() - startTime
+            workflow3_data_dict['deserialize'].append(timeTaken)
+
+    run_archive_loop(dataset_num, per_run_fn)
+
+    # Now return the dictionary for json dumping
+    return workflow3_data_dict
+
+for dataset_number in DATASET_NUMBERS:
+    result = analyze_workflow3(dataset_number)
+    with open(os.path.join('workflow3', dataset_number + '-workflow3.txt'), 'w') as f:
+        json.dump(result, f)
 
 exit()
 
