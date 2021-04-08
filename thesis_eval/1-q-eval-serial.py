@@ -42,11 +42,11 @@ shape = (len(incrementals), 2, NUM_SAMPLES)
 measurement_data = np.zeros(shape, dtype=np.float64)
 print("shape:", measurement_data.shape)
 
-# Start loop for each BIDS-I object, 
-for idx, incremental in enumerate(incrementals):
-    # Start loop for N iterations of: pickle the object, recording the time taken, then unpickle the object, recording the time taken
+# Start loop for N iterations of: pickle the object, recording the time taken, then unpickle the object, recording the time taken
+for i in range(NUM_SAMPLES):
+    # Start loop for each BIDS-I object, 
     startTime = 0.0
-    for i in range(NUM_SAMPLES):
+    for idx, incremental in enumerate(incrementals):
         startTime = time.process_time()
         pickled = pickle.dumps(incremental)
         serializationTime = time.process_time() - startTime
@@ -62,7 +62,10 @@ for idx, incremental in enumerate(incrementals):
 
 # Reduce the 3-D matrix to a 2-D matrix of average time to pickle each object and average time to unpickle each object
 averages = np.average(measurement_data, axis=2)
+pseudo_raw = np.average(measurement_data, axis=0).T
+print('pseudo raw shape', pseudo_raw.shape)
 
 # Output the 2-D matrix as a CSV file for chart generation in Excel, as matplotlib is fiddly
 averages *= 1000
 np.savetxt('1-q-ms.txt', averages, delimiter=',', header=f'Serialize Average Time (ms), Deserialize Average Time (ms)\nSizes: {sizes}')
+np.savetxt('1-q-ms-raw.txt', pseudo_raw, delimiter=',', header=f'Serialize Raw Time (ms), Deserialize Raw Time (ms)\nSizes: {sizes}')
