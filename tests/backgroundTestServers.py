@@ -5,6 +5,7 @@ import tempfile
 import threading
 import multiprocessing
 # sys.path.append(rootPath)
+from rtCommon.errors import RTError
 from rtCommon.structDict import StructDict
 from rtCommon.scannerDataService import ScannerDataService
 from rtCommon.subjectService import SubjectService
@@ -103,7 +104,9 @@ class BackgroundTestServers:
         isRunningEvent = multiprocessing.Event()
         self.projectProc = multiprocessing.Process(target=runProjectServer, args=(projectArgs, isRunningEvent))
         self.projectProc.start()
-        isRunningEvent.wait()
+        isRunningEvent.wait(timeout=10)
+        if not self.projectProc.is_alive():
+            raise RTError('Project server process failed to start')
 
         if dataRemote is True:
             # Start the dataService running
