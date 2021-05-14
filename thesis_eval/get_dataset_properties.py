@@ -23,8 +23,10 @@ for dataset_idx, dataset_num in enumerate(DATASET_NUMBERS):
 
     smallest = None
     largest = None
+    dtype = None
     for img in archive.getImages(datatype='func'):
         img = img.get_image()
+        dtype = img.header['datatype']
         if smallest is None:
             smallest = img.shape
         if largest is None:
@@ -37,7 +39,9 @@ for dataset_idx, dataset_num in enumerate(DATASET_NUMBERS):
 
     print('Dataset: ', dataset_num, ' | Total voxels:', np.prod(largest))
 
-    small_large_by_dataset[dataset_num] = {'Smallest Image in Dataset': smallest, 'Largest Image in Dataset': largest}
+    small_large_by_dataset[dataset_num] = {'Smallest Image in Dataset':
+                                           smallest, 'Largest Image in Dataset':
+                                           largest, 'Datatype': dtype}
 
 print(small_large_by_dataset)
 df = pd.DataFrame.from_dict(data=small_large_by_dataset,
