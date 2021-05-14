@@ -1,4 +1,6 @@
 *.nii
+workflow1/
 workflow2/
 workflow3/
 get-append-eval/
+datasets
