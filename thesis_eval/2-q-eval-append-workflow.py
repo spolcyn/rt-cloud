@@ -61,8 +61,8 @@ def download_and_unzip_datasets(dataset_numbers):
             "S3 download failed"
 
         print("Gunzipping", dataset_num)
-        # command = ['gunzip', '-r', dataset_path]
-        # assert subprocess.call(command) == 0, "Gunzip failed"
+        command = ['gunzip', '-r', dataset_path]
+        assert subprocess.call(command) == 0, "Gunzip failed"
 
         print("Finished downloading and gunzipping dataset", dataset_num)
 
